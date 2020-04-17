@@ -7,6 +7,7 @@
 #include <functional>
 
 #include "input/input.h"
+#include "display/display.h"
 
 
 class chip8 {
@@ -49,6 +50,9 @@ private:
 
     // Input handler
     Input input;
+
+    // Display
+    Display<64, 32> display;
 
     // Font
     const std::array<uint8_t, 80> font = {
