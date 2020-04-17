@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <functional>
 
+#include "input/input.h"
+
 
 class chip8 {
     friend class ISA;
@@ -44,6 +46,9 @@ private:
 
     // Stack
     std::stack<uint16_t> stack;
+
+    // Input handler
+    Input input;
 
     // Font
     const std::array<uint8_t, 80> font = {
