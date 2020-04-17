@@ -110,8 +110,8 @@ Opcodes to_opcode(uint16_t instruction) {
 
         case 0x8000: {
             const uint16_t lsb = instruction & 0x000F;
-            if (((lsb >= 0x0000) && (lsb <= 0x0007)) || (lsb == 0x000E)) {
-                static_cast<Opcodes>(msb + lsb); 
+            if ((lsb <= 0x0007) || (lsb == 0x000E)) {
+                return static_cast<Opcodes>(msb + lsb); 
             }
             return Opcodes::invalid;
         }
