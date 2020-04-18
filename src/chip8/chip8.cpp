@@ -6,15 +6,26 @@
 
 
 void chip8::reset() {
-	pc = 0;
+	// Reset registers
+	pc = rom_start;
 	i = 0;
 	v.fill(0);
-	memory.fill(0);
-	current_rom = std::filesystem::path{};
-	rom_size = 0;
 
+	// Zero out memory
+	memory.fill(0);
+
+	// Reset ROM patch
+	current_rom = std::filesystem::path{};
+	rom_end = rom_start;
+
+	// Empty the stack
 	while (!stack.empty()) {
 		stack.pop();
+	}
+
+	// Load the font into memory
+	for (size_t i = 0; i < font.size(); ++i) {
+		memory[i] = font[i];
 	}
 }
 
@@ -24,7 +35,7 @@ void chip8::run_cycle() {
 		return;
 	}
 
-	if (pc < rom_size) {  //check that the PC is within the ROM's memory region
+	if (pc < rom_end) {  //check that the PC is within the ROM's memory region
 		ISA::execute_cycle(*this);
 	}
 	else {
@@ -43,9 +54,10 @@ void chip8::load_rom(const std::filesystem::path& file) {
 
     // Ensure the ROM will fit in the memory
 	const auto file_size = std::filesystem::file_size(file);
-    if (file_size > memory.size()) {
+
+    if (file_size > (memory.size() - rom_start)) {
         std::cout << "The ROM " << file << " is too big to fit in the CHIP8 memory\n"
-                  << "  Memory size: " << memory.size() << '\n'
+                  << "  Memory size: " << (memory.size() - rom_start) << '\n'
                   << "     ROM size: " << file_size << '\n';
         return;
     }
@@ -61,7 +73,7 @@ void chip8::load_rom(const std::filesystem::path& file) {
 	reset();
 
 	// Read the entire file contents into the memory array
-    rom.read(reinterpret_cast<char*>(memory.data()), file_size);
+    rom.read(reinterpret_cast<char*>(memory.data() + rom_start), file_size);
 	current_rom = file;
-	rom_size = file_size;
+	rom_end = rom_start + file_size;
 }
