@@ -33,16 +33,17 @@ private:
 
 	// The currently loaded ROM and its size
 	std::filesystem::path current_rom;
-    size_t rom_size = 0;
 
 	// Pauses execution when true
 	bool paused = false;
 
     // System memory
     std::array<uint8_t, 4096> memory;
+	static constexpr size_t rom_start = 512;
+    size_t rom_end = rom_start;
 
     // Registers
-    uint16_t pc = 0;
+    uint16_t pc = rom_start;
     uint16_t i = 0;
     std::array<uint8_t, 16> v;
 
