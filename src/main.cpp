@@ -1,5 +1,4 @@
 #include "chip8/chip8.h"
-
 #include <string>
 #include <vector>
 
@@ -9,7 +8,7 @@ int main(int argc, char** argv) {
     const std::vector<std::string> args(argv, argv + argc);
 
     chip8 chip;
-    chip.load_rom(args[1]);
+    chip.load_rom("roms/demos/Zero.ch8");
 
     while (true) {
         chip.run_cycle();
