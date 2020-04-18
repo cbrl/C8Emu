@@ -31,8 +31,9 @@ public:
 
 private:
 
-	// The currently loaded ROM
+	// The currently loaded ROM and its size
 	std::filesystem::path current_rom;
+    size_t rom_size = 0;
 
 	// Pauses execution when true
 	bool paused = false;
