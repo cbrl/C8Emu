@@ -388,12 +388,12 @@ void ISA::key_vx(chip8& chip, instruction instr) {
 	// All execution stops until a key is pressed, then the value
 	// of that key is stored in vx.
 
-	chip.pause;
+	chip.pause();
 
 	auto func = [&](Keys key) {
 		uint8_t nKey = (uint8_t)key;
 		chip.v[instr.x] = nKey;
-		chip.resume;
+		chip.resume();
 	};
 
 	chip.input.register_keypress_event(func);
@@ -442,6 +442,8 @@ void ISA::font_vx(chip8& chip, instruction instr) {
 
 	// The value of i is set to the location for the hexadecimal sprite
 	// of the character corresponding to the value of vx.
+
+	//chip.i = chip.v[instr.x];
 
 	increment_pc(chip);
 }
