@@ -39,7 +39,7 @@ private:
 
     // System memory
     std::array<uint8_t, 4096> memory;
-	static constexpr size_t rom_start = 512;
+	static const size_t rom_start = 512;
     size_t rom_end = rom_start;
 
     // Registers
