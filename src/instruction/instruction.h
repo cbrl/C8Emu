@@ -2,6 +2,7 @@
 
 #include "opcodes.h"
 #include "util/strings.h"
+#include <iostream>
 
 
 /**
@@ -11,24 +12,24 @@
 struct instruction {
 public:
     instruction(uint16_t op) {
-        x   = (op & 0x0F00) >> 8;
-        y   = (op & 0x00F0) >> 4;
-        n   =  op & 0x000F;
-        nn  =  op & 0x00FF;
-        nnn =  op & 0x0FFF;
+        data   = op;
+        x      = (op & 0x0F00) >> 8;
+        y      = (op & 0x00F0) >> 4;
+        n      =  op & 0x000F;
+        nn     =  op & 0x00FF;
+        nnn    =  op & 0x0FFF;
         opcode = to_opcode(op);
     }
 
-    instruction(uint8_t high, uint8_t low) {
-        instruction((static_cast<uint16_t>(high) << 8) | low);
+    instruction(uint8_t high, uint8_t low) : instruction((static_cast<uint16_t>(high) << 8) | low){
     }
 
 
     // The packed representation of the instruction
-    uint16_t data;
+    uint16_t data = 0;
 
     // The opcode without arguments
-    Opcodes opcode;
+    Opcodes opcode =  Opcodes::invalid;
 
     // The arguments of the instruction
     uint16_t nnn : 12;

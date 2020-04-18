@@ -7,7 +7,7 @@
 
 
 void ISA::execute_cycle(chip8& chip) {
-	instruction instr{chip.memory[chip.pc], chip.memory[chip.pc+1]};
+	const instruction instr{chip.memory[chip.pc], chip.memory[chip.pc+1]};
 
 	if (const auto it = opcode_map.find(instr.opcode); it != opcode_map.end()) {
 		const auto& [key, func] = *it;
