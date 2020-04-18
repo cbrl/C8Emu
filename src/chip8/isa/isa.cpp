@@ -285,6 +285,7 @@ void ISA::mov_i_nnn(chip8& chip, instruction instr) {
 
 	// The value of register i is set to nnn.
 
+	chip.i = instr.nnn;
 	increment_pc(chip);
 }
 
@@ -296,6 +297,7 @@ void ISA::jmp_v0_nnn(chip8& chip, instruction instr) {
 
 	// The program counter is set to nnn plus the value of V0.
 
+	chip.pc = instr.nnn + chip.v[0];
 }
 
 
@@ -306,6 +308,12 @@ void ISA::rnd_vx_nn(chip8& chip, instruction instr) {
 
 	// The interpreter generates a random number from 0 to 255, which
 	// is then ANDed with the value nn. The results are stored in vx.
+
+	int rnd;
+
+	rnd = rand() % 255;
+
+	chip.v[instr.x] = (instr.nn & rnd);
 
 	increment_pc(chip);
 }
