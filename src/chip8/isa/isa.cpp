@@ -340,8 +340,7 @@ void ISA::skp_vx(chip8& chip, instruction instr) {
 	// Checks the keyboard, and if the key corresponding to the value
 	// of vx is currently in the down position, pc is increased by 2.
 
-	Keys key;
-	key = (Keys)chip.v[instr.x];
+	const auto key = static_cast<Keys>(chip.v[instr.x]);
 
 	if (chip.input.is_key_pressed(key)){
 		increment_pc(chip);
@@ -358,8 +357,7 @@ void ISA::sknp_vx(chip8& chip, instruction instr) {
 	// Checks the keyboard, and if the key corresponding to the value
 	// of vx is currently in the up position, pc is increased by 2.
 
-	Keys key;
-	key = (Keys)chip.v[instr.x];
+	const auto key = static_cast<Keys>(chip.v[instr.x]);
 
 	if (!chip.input.is_key_pressed(key)) {
 		increment_pc(chip);
@@ -391,8 +389,7 @@ void ISA::key_vx(chip8& chip, instruction instr) {
 	chip.pause();
 
 	auto func = [&](Keys key) {
-		uint8_t nKey = (uint8_t)key;
-		chip.v[instr.x] = nKey;
+		chip.v[instr.x] = static_cast<uint8_t>(key);
 		chip.resume();
 	};
 
