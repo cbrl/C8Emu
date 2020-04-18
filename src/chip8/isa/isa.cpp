@@ -19,6 +19,7 @@ void ISA::cls(chip8& chip, instruction instr) {
 	// 0x00E0 - cls
 	// Clear the display
 
+	chip.display.clear();
 	increment_pc(chip);
 }
 
@@ -31,6 +32,8 @@ void ISA::ret(chip8& chip, instruction instr) {
 	// The interpreter sets the program counter to the address at the
 	// top of the stack, then subtracts 1 from the stack pointer.
 
+	chip.pc = chip.stack.top();
+	chip.stack.pop();
 	increment_pc(chip);
 }
 
@@ -53,6 +56,7 @@ void ISA::jmp_nnn(chip8& chip, instruction instr) {
 
 	// The interpreter sets the program counter to nnn.
 
+	chip.pc = instr.nnn;
 }
 
 
@@ -64,6 +68,8 @@ void ISA::call_nnn(chip8& chip, instruction instr) {
 	// The interpreter increments the stack pointer, then puts the
 	// current pc on the top of the stack. The pc is then set to nnn.
 
+	chip.stack.push(chip.pc);
+	chip.pc = instr.nnn;
 }
 
 
@@ -75,6 +81,9 @@ void ISA::se_vx_nn(chip8& chip, instruction instr) {
 	// The interpreter compares register vx to nn, and if they are
 	// equal, increments the program counter by 2.
 
+	if (chip.v[instr.x] == instr.nn) {
+		increment_pc(chip);
+	}
 	increment_pc(chip);
 }
 
@@ -87,6 +96,9 @@ void ISA::sne_vx_nn(chip8& chip, instruction instr) {
 	// The interpreter compares register vx to nn, and if they are
 	// not equal, increments the program counter by 2.
 
+	if (chip.v[instr.x] != instr.nn) {
+		increment_pc(chip);
+	}
 	increment_pc(chip);
 }
 
@@ -99,6 +111,9 @@ void ISA::se_vx_vy(chip8& chip, instruction instr) {
 	// The interpreter compares register vx to register vy, and if they are
 	// equal, increments the program counter by 2.
 
+	if (chip.v[instr.x] == chip.v[instr.y]) {
+		increment_pc(chip);
+	}
 	increment_pc(chip);
 }
 
@@ -110,6 +125,7 @@ void ISA::mov_vx_nn(chip8& chip, instruction instr) {
 
 	// The interpreter puts the value nn into register vx.
 
+	chip.v[instr.x] = instr.nn;
 	increment_pc(chip);
 }
 
@@ -121,6 +137,7 @@ void ISA::add_vx_nn(chip8& chip, instruction instr) {
 
 	// Adds the value nn to the value of register vx, then stores the result in vx.
 
+	chip.v[instr.x] += instr.nn;
 	increment_pc(chip);
 }
 
