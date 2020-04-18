@@ -456,6 +456,12 @@ void ISA::bcd_vx(chip8& chip, instruction instr) {
 	// hundreds digit in memory at location in i, the tens digit at
 	// location i+1, and the ones digit at location i+2.
 
+	const uint8_t val = chip.v[instr.x];
+
+	chip.memory[chip.i]     = val / 100;
+	chip.memory[chip.i + 1] = (val / 10) % 10;
+	chip.memory[chip.i + 2] = val % 10;
+
 	increment_pc(chip);
 }
 
