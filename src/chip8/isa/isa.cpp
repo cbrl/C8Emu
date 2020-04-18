@@ -1,11 +1,30 @@
 #include "isa.h"
 #include "../chip8.h"
+
+#include <iostream>
 #include <random>
+#include <sstream>
 
 
 void ISA::execute_cycle(chip8& chip) {
 	instruction instr{chip.memory[chip.pc], chip.memory[chip.pc+1]};
-    opcode_map.at(instr.opcode)(chip, instr);
+
+	if (const auto it = opcode_map.find(instr.opcode); it != opcode_map.end()) {
+		const auto& [key, func] = *it;
+		func(chip, instr);
+	}
+	else {
+		std::ostringstream stream;
+	
+		// Build message -> "pc: instruction"
+		stream << std::hex
+		       << "0x" << std::uppercase << chip.pc
+			   << ": "
+			   << std::nouppercase << "0x" << std::uppercase << instr.data;
+
+		std::cout << "Invalid instruction - " << stream.str() << '\n';
+		increment_pc(chip);
+	}
 }
 
 

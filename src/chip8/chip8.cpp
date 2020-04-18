@@ -23,7 +23,13 @@ void chip8::run_cycle() {
 		return;
 	}
 
-	ISA::execute_cycle(*this);
+	if (pc < rom_size) {  //check that the PC is within the ROM's memory region
+		ISA::execute_cycle(*this);
+	}
+	else {
+		std::cout << "PC moved past end of ROM\n";
+		pause();
+	}
 }
 
 
@@ -56,4 +62,5 @@ void chip8::load_rom(const std::filesystem::path& file) {
 	// Read the entire file contents into the memory array
     rom.read(reinterpret_cast<char*>(memory.data()), file_size);
 	current_rom = file;
+	rom_size = file_size;
 }

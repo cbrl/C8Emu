@@ -40,11 +40,13 @@ public:
 
 
 inline std::string to_string(const instruction& instr) {
+    using namespace std::string_literals;
+
 	static const char* hex = "0123456789ABCDEF";
 
     std::string op = to_string(instr.opcode);
-    replace(op,    "x",       std::string{hex[instr.x]});
-    replace(op,    "y",       std::string{hex[instr.y]});
+    replace(op,    "vx",      "v"s + hex[instr.x]);
+    replace(op,    "vy",      "v"s + hex[instr.y]);
     replace(op,   " n", ' ' + std::to_string(instr.n));
     replace(op,  " nn", ' ' + std::to_string(instr.nn));
     replace(op, " nnn", ' ' + std::to_string(instr.nnn));
