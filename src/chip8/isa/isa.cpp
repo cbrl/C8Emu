@@ -7,7 +7,7 @@
 
 
 void ISA::execute_cycle(chip8& chip) {
-	instruction instr{chip.memory[chip.pc], chip.memory[chip.pc+1]};
+	const instruction instr{chip.memory[chip.pc], chip.memory[chip.pc+1]};
 
 	if (const auto it = opcode_map.find(instr.opcode); it != opcode_map.end()) {
 		const auto& [key, func] = *it;
@@ -168,7 +168,6 @@ void ISA::mov_vx_vy(chip8& chip, instruction instr) {
 
 	// Stores the value of register vy in register vx.
 
-	chip.v[instr.x] = chip.v[instr.y];
 	increment_pc(chip);
 }
 
@@ -181,7 +180,6 @@ void ISA::or_vx_vy(chip8& chip, instruction instr) {
 	// Performs a bitwise OR on the values of vx and vy,
 	// then stores the result in vx.
 
-	chip.v[instr.x] = (chip.v[instr.x] | chip.v[instr.y]);
 	increment_pc(chip);
 }
 
@@ -193,7 +191,7 @@ void ISA::and_vx_vy(chip8& chip, instruction instr) {
 
 	// Performs a bitwise AND on the values of vx and vy,
 	// then stores the result in vx.
-	chip.v[instr.x] = (chip.v[instr.x] & chip.v[instr.y]);
+
 	increment_pc(chip);
 }
 
@@ -205,7 +203,7 @@ void ISA::xor_vx_vy(chip8& chip, instruction instr) {
 
 	// Performs a bitwise exclusive OR on the values of
 	// vx and vy, then stores the result in vx.
-	chip.v[instr.x] = (chip.v[instr.x] ^ chip.v[instr.y]);
+
 	increment_pc(chip);
 }
 
@@ -218,10 +216,6 @@ void ISA::add_vx_vy(chip8& chip, instruction instr) {
 	// The values of vx and vy are added together and the result
 	// is stored in vx. If the result overflows, vf is set to 1,
 	// otherwise 0.is greater than
-
-	//This is not finished! TODO: Find a way to detect overflow.
-	chip.v[instr.x] = (chip.v[instr.x] + chip.v[instr.y]);
-	chip.v[0xF] = 1;
 
 	increment_pc(chip);
 }
@@ -247,7 +241,6 @@ void ISA::shr_vx(chip8& chip, instruction instr) {
 	// vx is set to the value of vy shifted right by 1. Then, vf
 	// is set to the value of the least significant bit of vy.
 
-	chip.v[instr.x] = (chip.v[instr.y] >> 1);
 	increment_pc(chip);
 }
 
@@ -272,8 +265,6 @@ void ISA::shl_vx(chip8& chip, instruction instr) {
 	// vx is set to the value of vy shifted right by 1. Then, vf
 	// is set to the value of the least significant bit of vy.
 
-	chip.v[instr.x] = (chip.v[instr.y] << 1);
-
 	increment_pc(chip);
 }
 
@@ -285,10 +276,6 @@ void ISA::sne_vx_vy(chip8& chip, instruction instr) {
 
 	// The values of vx and vy are compared, and if they are not equal,
 	// the program counter is increased by 2.
-
-	if (chip.v[instr.x] != (chip.v[instr.y])) {
-		increment_pc(chip);
-	}
 
 	increment_pc(chip);
 }

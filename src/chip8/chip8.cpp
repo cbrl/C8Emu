@@ -11,6 +11,7 @@ void chip8::reset() {
 	v.fill(0);
 	memory.fill(0);
 	current_rom = std::filesystem::path{};
+	rom_size = 0;
 
 	while (!stack.empty()) {
 		stack.pop();
