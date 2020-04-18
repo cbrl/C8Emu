@@ -443,7 +443,8 @@ void ISA::font_vx(chip8& chip, instruction instr) {
 	// The value of i is set to the location for the hexadecimal sprite
 	// of the character corresponding to the value of vx.
 
-	//chip.i = chip.v[instr.x];
+	// it's VX * 5 because every font is 5 bytes long.
+	chip.i = chip.v[instr.x] * 5;
 
 	increment_pc(chip);
 }
