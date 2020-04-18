@@ -309,12 +309,10 @@ void ISA::rnd_vx_nn(chip8& chip, instruction instr) {
 	// The interpreter generates a random number from 0 to 255, which
 	// is then ANDed with the value nn. The results are stored in vx.
 
-	int rnd;
+	char rnd;
 
 	rnd = rand() % 255;
-
 	chip.v[instr.x] = (instr.nn & rnd);
-
 	increment_pc(chip);
 }
 
@@ -342,6 +340,12 @@ void ISA::skp_vx(chip8& chip, instruction instr) {
 	// Checks the keyboard, and if the key corresponding to the value
 	// of vx is currently in the down position, pc is increased by 2.
 
+	Keys key;
+	key = (Keys)chip.v[instr.x];
+
+	if (chip.input.is_key_pressed(key)){
+		increment_pc(chip);
+	}
 	increment_pc(chip);
 }
 
@@ -354,6 +358,12 @@ void ISA::sknp_vx(chip8& chip, instruction instr) {
 	// Checks the keyboard, and if the key corresponding to the value
 	// of vx is currently in the up position, pc is increased by 2.
 
+	Keys key;
+	key = (Keys)chip.v[instr.x];
+
+	if (!chip.input.is_key_pressed(key)) {
+		increment_pc(chip);
+	}
 	increment_pc(chip);
 }
 
@@ -365,6 +375,7 @@ void ISA::gdly_vx(chip8& chip, instruction instr) {
 
 	// The value of DT is placed into vx.
 
+	//chip.v[instr.x] = ;
 	increment_pc(chip);
 }
 
@@ -377,6 +388,15 @@ void ISA::key_vx(chip8& chip, instruction instr) {
 	// All execution stops until a key is pressed, then the value
 	// of that key is stored in vx.
 
+	chip.pause;
+
+	auto func = [&](Keys key) {
+		uint8_t nKey = (uint8_t)key;
+		chip.v[instr.x] = nKey;
+		chip.resume;
+	};
+
+	chip.input.register_keypress_event(func);
 }
 
 
