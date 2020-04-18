@@ -43,11 +43,11 @@ inline std::string to_string(const instruction& instr) {
 	static const char* hex = "0123456789ABCDEF";
 
     std::string op = to_string(instr.opcode);
-    Replace(op,    "x",       std::string{hex[instr.x]});
-    Replace(op,    "y",       std::string{hex[instr.y]});
-    Replace(op,   " n", ' ' + std::to_string(instr.n));
-    Replace(op,  " nn", ' ' + std::to_string(instr.nn));
-    Replace(op, " nnn", ' ' + std::to_string(instr.nnn));
+    replace(op,    "x",       std::string{hex[instr.x]});
+    replace(op,    "y",       std::string{hex[instr.y]});
+    replace(op,   " n", ' ' + std::to_string(instr.n));
+    replace(op,  " nn", ' ' + std::to_string(instr.nn));
+    replace(op, " nnn", ' ' + std::to_string(instr.nnn));
 
     return op;
 

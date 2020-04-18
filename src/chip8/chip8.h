@@ -25,9 +25,9 @@ public:
 		paused = false;
 	}
 
-    void runCycle();
+    void run_cycle();
 
-    void loadROM(const std::filesystem::path& file);
+    void load_rom(const std::filesystem::path& file);
 
 private:
 

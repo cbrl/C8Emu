@@ -9,10 +9,10 @@ int main(int argc, char** argv) {
     const std::vector<std::string> args(argv, argv + argc);
 
     chip8 chip;
-    chip.loadROM(args[1]);
+    chip.load_rom(args[1]);
 
     while (true) {
-        chip.runCycle();
+        chip.run_cycle();
     }
 
     return 0;

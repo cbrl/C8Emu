@@ -18,16 +18,16 @@ void chip8::reset() {
 }
 
 
-void chip8::runCycle() {
+void chip8::run_cycle() {
 	if (paused) {
 		return;
 	}
 
-	ISA::executeCycle(*this);
+	ISA::execute_cycle(*this);
 }
 
 
-void chip8::loadROM(const std::filesystem::path& file) {
+void chip8::load_rom(const std::filesystem::path& file) {
     // Check that file exists
     if (!std::filesystem::exists(file)) {
         std::cout << "Error loading ROM " << file << ": The file does not exist\n";

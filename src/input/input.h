@@ -44,21 +44,21 @@ public:
      * @param[in] key      The key to set the state of
      * @param[in] pressed  The state of the key
      */
-    void setKeyState(Keys key, bool pressed);
+    void set_key_state(Keys key, bool pressed);
 
     /**
      * @brief Query the state of a key
      * 
      * @param[in] key  The key to get the state of
      */
-    bool isKeyPressed(Keys key) noexcept;
+    bool is_key_pressed(Keys key) noexcept;
 
     /**
      * @brief Provide a function to be called when a key is pressed
      * 
      * @param[in] func  The function to be called on keypress
      */
-    void registerKeypressEvent(const std::function<void(Keys key)>& func) noexcept;
+    void register_keypress_event(const std::function<void(Keys key)>& func) noexcept;
 
 private:
 

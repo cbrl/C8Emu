@@ -9,7 +9,7 @@ void Input::reset() noexcept {
 }
 
 
-void Input::setKeyState(Keys key, bool pressed) {
+void Input::set_key_state(Keys key, bool pressed) {
     key_states[key] = pressed;
     
     // Call the key event if the CPU is waiting for one
@@ -20,11 +20,11 @@ void Input::setKeyState(Keys key, bool pressed) {
 }
 
 
-bool Input::isKeyPressed(Keys key) noexcept {
+bool Input::is_key_pressed(Keys key) noexcept {
     return key_states[key];
 }
 
 
-void Input::registerKeypressEvent(const std::function<void(Keys key)>& func) noexcept {
+void Input::register_keypress_event(const std::function<void(Keys key)>& func) noexcept {
     on_keypress = func;
 }

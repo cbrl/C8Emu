@@ -80,7 +80,7 @@ public:
 	 * @return The background color of the display
 	 */
 	[[nodiscard]]
-	uint32_t getBackgroundColor() const noexcept {
+	uint32_t get_background_color() const noexcept {
 		return bg_color;
 	}
 
@@ -89,7 +89,7 @@ public:
 	 * 
 	 * @param[in] new_color  The new background color for the display
 	 */
-	void setBackgroundColor(uint32_t new_color) noexcept {
+	void set_background_color(uint32_t new_color) noexcept {
 		for (size_t y = 0; y < SizeY; ++y) {
 			for (size_t x = 0; x < SizeX; ++x) {
 				if (row(y)[x] == bg_color) {
@@ -111,7 +111,7 @@ public:
 	 * @return The foreground color of the display
 	 */
 	[[nodiscard]]
-	uint32_t getForegroundColor() const noexcept {
+	uint32_t get_foreground_color() const noexcept {
 		return fg_color;
 	}
 
@@ -121,7 +121,7 @@ public:
 	 * 
 	 * @param[in] new_color  The new foreground color for the display
 	 */
-	void setForegroundColor(uint32_t new_color) noexcept {
+	void set_foreground_color(uint32_t new_color) noexcept {
 		// Update drawn pixels
 		for (size_t y = 0; y < SizeY; ++y) {
 			for (size_t x = 0; x < SizeX; ++x) {
@@ -144,7 +144,7 @@ public:
 	 * @return The X dimension
 	 */
 	[[nodiscard]]
-	size_t sizeX() const noexcept {
+	size_t size_x() const noexcept {
 		return SizeX;
 	}
 
@@ -153,7 +153,7 @@ public:
 	 * @return The Y dimension
 	 */
 	[[nodiscard]]
-	size_t sizeY() const noexcept {
+	size_t size_y() const noexcept {
 		return SizeY;
 	}
 

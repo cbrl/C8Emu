@@ -23,14 +23,15 @@ public:
      *
      * @param[in] chip  An instance of chip8 to execute a cycle of
      */
-    static void executeCycle(chip8& chip);
+    static void execute_cycle(chip8& chip);
 
 private:
+
     // Private constructor/destructor prevents this class from being constructed
     ISA() = default;
     ~ISA() = default;
 
-    static void incrementPC(chip8& chip) noexcept;
+    static void increment_pc(chip8& chip) noexcept;
 
     // 0x0---
     static void cls(chip8& chip, instruction instr);     //0x00E0
@@ -101,7 +102,8 @@ private:
 
 
     // Map each opcode enum to the appropriate function
-    static inline const std::map<Opcodes, std::function<void(chip8&, instruction)>> opcode_map = {
+    static inline const
+    std::map<Opcodes, std::function<void(chip8&, instruction)>> opcode_map = {
         {Opcodes::cls,         cls},
         {Opcodes::ret,         ret},
         {Opcodes::sys_nnn,     sys_nnn},
