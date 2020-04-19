@@ -178,7 +178,7 @@ public:
 	 */
 	[[nodiscard]]
 	const uint32_t* data() const noexcept {
-		return pixels;
+		return pixels.data();
 	}
 
 	/**
@@ -187,7 +187,7 @@ public:
 	 */
 	[[nodiscard]]
 	uint32_t* data() noexcept {
-		return pixels;
+		return pixels.data();
 	}
 
 private:
@@ -199,7 +199,7 @@ private:
 	//--------------------------------------------------------------------------------
 	// Member Variables
 	//--------------------------------------------------------------------------------
-	uint32_t bg_color = 0x00000000;
+	uint32_t bg_color = 0x000000FF;
 	uint32_t fg_color = 0xFFFFFFFF;
 	std::array<uint32_t, SizeX * SizeY> pixels;
 };

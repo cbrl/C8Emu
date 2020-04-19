@@ -13,6 +13,7 @@
 
 class chip8 {
     friend class ISA;
+    friend class MediaLayer;
 
 public:
 

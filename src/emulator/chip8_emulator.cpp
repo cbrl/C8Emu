@@ -17,7 +17,7 @@ void Chip8Emulator::run() {
         }
 
         // Process SDL events
-        media_layer.process_events(stop);
+        media_layer.process_events(chip, stop);
 
         // Render the UI
         render();
@@ -26,5 +26,5 @@ void Chip8Emulator::run() {
 
 
 void Chip8Emulator::render() {
-
+    media_layer.render(chip);
 }
