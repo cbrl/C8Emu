@@ -9,7 +9,7 @@ int main(int argc, char** argv) {
 
     Chip8Emulator emulator;
 
-    if (!emulator.load_rom("../roms/demos/Zero.ch8")) {
+    if (!emulator.load_rom("roms/demos/Zero.ch8")) {
         return 1;
     }
 
