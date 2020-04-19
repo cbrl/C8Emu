@@ -30,5 +30,5 @@ private:
 
     // The CHIP-8 display texture and its scale
     GLuint texture;
-    uint8_t display_scale = 10;
+    uint32_t display_scale = 10;
 };

@@ -1,11 +1,31 @@
 #include "media_layer.h"
+
 #include "chip8/chip8.h"
+#include "instruction/instruction.h"
 
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3.h"
 #include "imgui/imgui_impl_sdl.h"
+#include "imgui/misc/cpp/imgui_stdlib.h"
 
 #include <iostream>
+
+
+void RGBA2FloatArray(uint32_t rgba, float array[4]) {
+    array[0] = static_cast<float>((rgba >> 24) & 0xFF) / 255.0f;
+    array[1] = static_cast<float>((rgba >> 16) & 0xFF) / 255.0f;
+    array[2] = static_cast<float>((rgba >> 8)  & 0xFF) / 255.0f;
+    array[3] = static_cast<float>( rgba        & 0xFF) / 255.0f;
+}
+
+uint32_t FloatArray2RGBA(const float array[4]) {
+    uint32_t rgba = 0;
+    rgba |= static_cast<uint32_t>(array[0] * 255) << 24;
+    rgba |= static_cast<uint32_t>(array[1] * 255) << 16;
+    rgba |= static_cast<uint32_t>(array[2] * 255) << 8;
+    rgba |= static_cast<uint32_t>(array[3] * 255);
+    return rgba;
+}
 
 
 static const std::map<SDL_Scancode, Keys> key_map = {
@@ -169,6 +189,8 @@ void MediaLayer::end_frame() {
 
 
 void MediaLayer::render_ui(chip8& chip) {
+
+    // Update the CHIP-8 display texture
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexImage2D(
         GL_TEXTURE_2D,
@@ -181,20 +203,199 @@ void MediaLayer::render_ui(chip8& chip) {
         chip.display.data()
     );
 
-    ImGui::ShowDemoWindow();
+    // ImGui::ShowDemoWindow();
 
-    if (ImGui::Begin("CHIP-8", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        const float x_size = 64 * display_scale;
-        const float y_size = 32 * display_scale;
 
-        ImGui::BeginChild("Image", {x_size + 16, y_size + 16}, true);
-        ImGui::Image((ImTextureID)(intptr_t)texture, {x_size, y_size});
-        ImGui::EndChild();
-    }
-    ImGui::End();
+    //----------------------------------------------------------------------------------
+	// CHIP-8 Status
+	//----------------------------------------------------------------------------------
+	if (ImGui::Begin("CHIP-8", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
 
-    if (ImGui::Begin("Display Scale", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::InputInt("Scale", (int*)&display_scale);
-    }
-    ImGui::End();
+		float reg_x = 100;
+		float reg_y = 350;
+
+		//----------------------------------------------------------------------------------
+		// Registers
+		//----------------------------------------------------------------------------------
+		ImGui::BeginChild("Registers", {reg_x, reg_y}, true);
+			ImGui::Text("Registers");
+			ImGui::Separator();
+
+			for (uint8_t i = 0; i <= 0xF; ++i) {
+				ImGui::Text("v%x: 0x%02X", i, chip.v[i]);
+			}
+			ImGui::Separator();
+			ImGui::Text(" I: 0x%04X", chip.i);
+			ImGui::Text("PC: 0x%04X", chip.pc);
+		ImGui::EndChild();
+
+
+		ImGui::SameLine();
+		ImGui::Spacing();
+		ImGui::SameLine();
+
+		
+		ImGui::BeginGroup();
+		{
+			//----------------------------------------------------------------------------------
+			// Program Instructions
+			//----------------------------------------------------------------------------------
+			float prog_x = 200;
+			float prog_y = 200;
+			ImGui::BeginChild("Program", {prog_x, prog_y}, true, ImGuiWindowFlags_NoScrollbar);
+			{
+				ImGui::Text("Program Instructions");
+				ImGui::Separator();
+
+				static constexpr int count = 10;
+				static std::vector<std::string> instructions(count);
+
+				for (size_t i = 0; i < count; ++i) {
+					const instruction instr = (chip.memory[chip.pc+(2*i)] << 8) | (chip.memory[chip.pc+(2*i)+1]);
+					instructions[i] = to_string(instr);
+					if (i == 0) ImGui::Text("0x%04X - %s", chip.pc, instructions[0].data());
+					else ImGui::TextDisabled("0x%04X - %s", (uint32_t)(chip.pc+(2*i)), instructions[i].data());
+				}
+			}
+			ImGui::EndChild();
+
+			//----------------------------------------------------------------------------------
+			// Settings
+			//----------------------------------------------------------------------------------
+			ImGui::BeginChild("Chip8 Settings", {prog_x, 0}, true);
+			{
+				ImGui::Text("Settings");
+				ImGui::Separator();
+				ImGui::Spacing();
+				
+				uint32_t clock = chip.get_clock_rate();
+				ImGui::Text("Max Clock (Hz)");
+				if (ImGui::InputInt("", (int*)&clock)) {
+					chip.set_clock_rate(clock);
+				}
+
+				ImGui::Spacing();
+
+				if (ImGui::Button("Reset System")) {
+					chip.reset();
+				}
+			}
+			ImGui::EndChild();
+		}
+		ImGui::EndGroup();
+
+
+		ImGui::SameLine();
+		ImGui::Spacing();
+		ImGui::SameLine();
+
+		//----------------------------------------------------------------------------------
+		// Stack
+		//----------------------------------------------------------------------------------
+		ImGui::BeginChild("Stack", {reg_x, reg_y}, true);
+		{
+			ImGui::Text("Stack");
+			ImGui::Separator();
+
+			for (ptrdiff_t i = chip.stack.size()-1; i >= 0; --i) {
+				ImGui::Text("%02d: 0x%04X", (int)i, chip.stack[i]);
+			}
+		}
+		ImGui::EndChild();
+	}
+	ImGui::End();
+
+
+	//----------------------------------------------------------------------------------
+	// CHIP-8 Display
+	//----------------------------------------------------------------------------------
+	if (ImGui::Begin("Display", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+
+		const float x_size = chip.display.size_x() * display_scale;
+		const float y_size = chip.display.size_y() * display_scale;
+
+		ImGui::BeginChild("Image", {x_size + 16.0f, y_size + 16.0f}, true);
+			ImGui::Image((ImTextureID)(intptr_t)texture, ImVec2{x_size, y_size});
+		ImGui::EndChild();
+
+		ImGui::Spacing();
+		ImGui::Separator();
+		ImGui::Spacing();
+
+		ImGui::BeginChild("Display Settings", {200, 100});
+		{
+            static const uint8_t scale_step = 1;
+			ImGui::InputScalar("Scale", ImGuiDataType_U8, &display_scale, &scale_step);
+			
+			const uint32_t off = chip.display.get_background_color();
+			const uint32_t on  = chip.display.get_foreground_color();
+
+			float off_arr[4] = {};
+            float on_arr[4] = {};
+
+            RGBA2FloatArray(off, off_arr);
+            RGBA2FloatArray(on, on_arr);
+
+			if (ImGui::ColorEdit3("Background Color", off_arr)) {
+                chip.display.set_background_color(FloatArray2RGBA(off_arr));
+			}
+			if (ImGui::ColorEdit3("Foreground Color", on_arr)) {
+                chip.display.set_foreground_color(FloatArray2RGBA(on_arr));
+			}
+
+			bool wrap = chip.display.get_wrapping();
+			if (ImGui::Checkbox("Wrapping", &wrap)) {
+				chip.display.set_wrapping(wrap);
+			}
+		}
+		ImGui::EndChild();
+
+	}
+	ImGui::End();
+
+
+	//----------------------------------------------------------------------------------
+	// ROM
+	//----------------------------------------------------------------------------------
+	if (ImGui::Begin("ROM", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+		
+		static std::string filename;
+		static std::filesystem::path path;
+
+		static const std::function<void(std::filesystem::directory_iterator)> list_files = [](std::filesystem::directory_iterator it) {
+			for (auto& d : it) {
+				auto d_path = d.path();
+				if (d.is_directory()) {
+					bool node_open = ImGui::TreeNode(d_path.filename().string().c_str());
+					if (node_open) {
+						list_files(std::filesystem::directory_iterator(d_path));
+						ImGui::TreePop();
+					}
+				}
+				else if (d_path.extension() == ".ch8") {
+					if (ImGui::Selectable(d_path.filename().string().c_str())) {
+						path = d_path;
+						filename = path.filename().string();
+					}
+				}
+			}
+		};
+		
+		if (ImGui::BeginChild("ROM_List", ImVec2(350, 250), true, ImGuiWindowFlags_NoSavedSettings)) {
+			bool node_open = ImGui::TreeNodeEx("./", ImGuiTreeNodeFlags_DefaultOpen);
+			if (node_open) {
+				list_files(std::filesystem::directory_iterator("./"));
+				ImGui::TreePop();
+			}
+		}
+		ImGui::EndChild();
+
+		ImGui::PushItemWidth(-1);
+		ImGui::InputText("", &filename, ImGuiInputTextFlags_ReadOnly);
+		ImGui::PopItemWidth();
+		if (ImGui::Button("Load")) {
+			(void)chip.load_rom(path);
+		}
+	}
+	ImGui::End();
 }

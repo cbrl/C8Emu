@@ -1,10 +1,10 @@
 #pragma once
 
-#include <cstdint>
 #include <array>
-#include <stack>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <vector>
 
 #include "input/input.h"
 #include "display/display.h"
@@ -44,6 +44,14 @@ public:
     [[nodiscard]]
     bool load_rom(const std::filesystem::path& file);
 
+
+    uint32_t get_clock_rate() const noexcept {
+        return clock_rate;
+    }
+    void set_clock_rate(uint32_t rate) noexcept {
+        clock_rate = rate;
+    }
+
 private:
 
 	// The currently loaded ROM and its size
@@ -51,6 +59,9 @@ private:
 
 	// Pauses execution when true
 	bool paused = false;
+
+    // The clock speed in Hz
+    uint32_t clock_rate = 60;
 
     // System memory
     std::array<uint8_t, 4096> memory;
@@ -63,7 +74,7 @@ private:
     std::array<uint8_t, 16> v;
 
     // Stack
-    std::stack<uint16_t> stack;
+    std::vector<uint16_t> stack;
 
     // Input handler
     Input input;
@@ -75,7 +86,7 @@ private:
     Chip8Timer timer;
 
     // Font
-    const std::array<uint8_t, 80> font = {
+    static inline const std::array<uint8_t, 80> font = {
         0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
         0x20, 0x60, 0x20, 0x20, 0x70, // 1
         0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2

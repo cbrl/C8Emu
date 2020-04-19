@@ -36,6 +36,15 @@ public:
 	}
 
 	/**
+	 * @brief Get the wrapping state
+	 * @return The wrapping state
+	 */
+	bool get_wrapping() const noexcept {
+		return wrapping;
+	}
+
+
+	/**
 	 * @brief Draw a pixel (set to foreground color) at the specified location
 	 * 
 	 * @param[in] x  The x coordinate of the pixel

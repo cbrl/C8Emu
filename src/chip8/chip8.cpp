@@ -19,9 +19,7 @@ void chip8::reset() {
 	rom_end = rom_start;
 
 	// Empty the stack
-	while (!stack.empty()) {
-		stack.pop();
-	}
+	stack.clear();
 
 	// Load the font into memory
 	for (size_t i = 0; i < font.size(); ++i) {

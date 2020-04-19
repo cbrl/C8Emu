@@ -35,8 +35,8 @@ void ISA::ret(chip8& chip, instruction instr) {
 	// The interpreter sets the program counter to the address at the
 	// top of the stack, then subtracts 1 from the stack pointer.
 
-	chip.pc = chip.stack.top();
-	chip.stack.pop();
+	chip.pc = chip.stack.back();
+	chip.stack.pop_back();
 	increment_pc(chip);
 }
 
@@ -71,7 +71,7 @@ void ISA::call_nnn(chip8& chip, instruction instr) {
 	// The interpreter increments the stack pointer, then puts the
 	// current pc on the top of the stack. The pc is then set to nnn.
 
-	chip.stack.push(chip.pc);
+	chip.stack.push_back(chip.pc);
 	chip.pc = instr.nnn;
 }
 
