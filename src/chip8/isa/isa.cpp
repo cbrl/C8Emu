@@ -124,7 +124,7 @@ void ISA::se_vx_vy(chip8& chip, instruction instr) {
 void ISA::mov_vx_nn(chip8& chip, instruction instr) {
 
 	// 0x6xnn - mov vx, byte
-	// Set vx = nn
+	// vx = nn
 
 	// The interpreter puts the value nn into register vx.
 
@@ -136,7 +136,7 @@ void ISA::mov_vx_nn(chip8& chip, instruction instr) {
 void ISA::add_vx_nn(chip8& chip, instruction instr) {
 
 	// 0x7xnn - add vx, byte
-	// Set vx = vx + nn
+	// vx = vx + nn
 
 	// Adds the value nn to the value of register vx, then stores the result in vx.
 
@@ -148,7 +148,7 @@ void ISA::add_vx_nn(chip8& chip, instruction instr) {
 void ISA::mov_vx_vy(chip8& chip, instruction instr) {
 
 	// 8xy0 - mov vx, vy
-	// Set vx = vy
+	// vx = vy
 
 	// Stores the value of register vy in register vx.
 
@@ -160,7 +160,7 @@ void ISA::mov_vx_vy(chip8& chip, instruction instr) {
 void ISA::or_vx_vy(chip8& chip, instruction instr) {
 
 	// 0x8xy1 - or vx, vy
-	// Set vx = vx | vy
+	// vx = vx | vy
 
 	// Performs a bitwise OR on the values of vx and vy,
 	// then stores the result in vx.
@@ -173,7 +173,7 @@ void ISA::or_vx_vy(chip8& chip, instruction instr) {
 void ISA::and_vx_vy(chip8& chip, instruction instr) {
 
 	// 0x8xy2 - and vx, vy
-	// Set vx = vx & vy
+	// vx = vx & vy
 
 	// Performs a bitwise AND on the values of vx and vy,
 	// then stores the result in vx.
@@ -185,7 +185,7 @@ void ISA::and_vx_vy(chip8& chip, instruction instr) {
 void ISA::xor_vx_vy(chip8& chip, instruction instr) {
 
 	// 0x8xy3 - xor vx, vy
-	// Set vx = vx ^ vy
+	// vx = vx ^ vy
 
 	// Performs a bitwise exclusive OR on the values of
 	// vx and vy, then stores the result in vx.
@@ -197,7 +197,8 @@ void ISA::xor_vx_vy(chip8& chip, instruction instr) {
 void ISA::add_vx_vy(chip8& chip, instruction instr) {
 
 	// 0x8xy4 - add vx, vy
-	// Set vx = vx + vy, set vf = carry
+	// vx = vx + vy
+	// vf = carry
 
 	// The values of vx and vy are added together and the result
 	// is stored in vx. If the result overflows, vf is set to 1,
@@ -214,7 +215,8 @@ void ISA::add_vx_vy(chip8& chip, instruction instr) {
 void ISA::sub_vx_vy(chip8& chip, instruction instr) {
 
 	// 0x8xy5 - sub vx, vy
-	// Set vx = vx - vy, set vf = NOT borrow
+	// vx = vx - vy
+	// vf = NOT borrow
 
 	// If vx > vy, then vf is set to 1, otherwise 0. Then vy is
 	// subtracted from vx, and the results stored in vx.
@@ -226,7 +228,8 @@ void ISA::sub_vx_vy(chip8& chip, instruction instr) {
 void ISA::shr_vx(chip8& chip, instruction instr) {
 
 	// 0x8xy6 - shr vx {, vy}
-	// Set vx = vy >> 1
+	// vx = vy >> 1
+	// vf = vy & 1
 
 	// vx is set to the value of vy shifted right by 1. Then, vf
 	// is set to the value of the least significant bit of vy.
@@ -239,7 +242,8 @@ void ISA::shr_vx(chip8& chip, instruction instr) {
 void ISA::subn_vx_vy(chip8& chip, instruction instr) {
 
 	// 0x8xy7 - subn vx, vy
-	// Set vx = vy - vx, set vf = NOT borrow
+	// vx = vy - vx
+	// vf = NOT borrow
 
 	// If vy > vx, then vf is set to 1, otherwise 0. Then vx is
 	// subtracted from vy, and the results stored in vx.
@@ -251,7 +255,8 @@ void ISA::subn_vx_vy(chip8& chip, instruction instr) {
 void ISA::shl_vx(chip8& chip, instruction instr) {
 
 	// 0x8xyE - shl vx {, vy}
-	// Set vx = vy << 1
+	// vx = vy << 1
+	// vf = vy & 1
 
 	// vx is set to the value of vy shifted right by 1. Then, vf
 	// is set to the value of the least significant bit of vy.
@@ -281,7 +286,7 @@ void ISA::sne_vx_vy(chip8& chip, instruction instr) {
 void ISA::mov_i_nnn(chip8& chip, instruction instr) {
 
 	// 0xAnnn - mov i, addr
-	// Set i = nnn
+	// i = nnn
 
 	// The value of register i is set to nnn.
 
@@ -304,7 +309,7 @@ void ISA::jmp_v0_nnn(chip8& chip, instruction instr) {
 void ISA::rnd_vx_nn(chip8& chip, instruction instr) {
 
 	// 0xCxnn - rnd vx, byte
-	// Set vx = random byte AND nn
+	// vx = random byte AND nn
 
 	// The interpreter generates a random number from 0 to 255, which
 	// is then ANDed with the value nn. The results are stored in vx.
@@ -369,7 +374,7 @@ void ISA::sknp_vx(chip8& chip, instruction instr) {
 void ISA::gdly_vx(chip8& chip, instruction instr) {
 
 	// 0xFx07 - gdly vx
-	// Set vx = delay timer value
+	// vx = delay timer value
 
 	// The value of DT is placed into vx.
 
@@ -400,7 +405,7 @@ void ISA::key_vx(chip8& chip, instruction instr) {
 void ISA::sdly_vx(chip8& chip, instruction instr) {
 
 	// 0xFx15 - sdly vx
-	// Set delay timer = vx
+	// delay timer = vx
 
 	// DT is set equal to the value of vx.
 
@@ -411,7 +416,7 @@ void ISA::sdly_vx(chip8& chip, instruction instr) {
 void ISA::ssnd_vx(chip8& chip, instruction instr) {
 
 	// 0xFx18 - ssnd vx
-	// Set sound timer = vx
+	// sound timer = vx
 
 	// ST is set equal to the value of vx.
 
@@ -422,7 +427,7 @@ void ISA::ssnd_vx(chip8& chip, instruction instr) {
 void ISA::add_i_vx(chip8& chip, instruction instr) {
 
 	// 0xFx1E - add i, vx
-	// Set i = i + vx
+	// i = i + vx
 
 	// The values of i and vx are added, and the results are stored in i.
 	// vf is set to 1 when there is a range overflow (i+vx > 0xFFF),
@@ -435,7 +440,7 @@ void ISA::add_i_vx(chip8& chip, instruction instr) {
 void ISA::font_vx(chip8& chip, instruction instr) {
 
 	// Fx29 - font vx
-	// Set i = location of sprite for digit vx
+	// i = location of sprite for digit vx
 
 	// The value of i is set to the location for the hexadecimal sprite
 	// of the character corresponding to the value of vx.
