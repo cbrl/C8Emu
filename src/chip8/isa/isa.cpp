@@ -177,6 +177,7 @@ void ISA::and_vx_vy(chip8& chip, instruction instr) {
 
 	// Performs a bitwise AND on the values of vx and vy,
 	// then stores the result in vx.
+
 	chip.v[instr.x] = (chip.v[instr.x] & chip.v[instr.y]);
 	increment_pc(chip);
 }
@@ -189,6 +190,7 @@ void ISA::xor_vx_vy(chip8& chip, instruction instr) {
 
 	// Performs a bitwise exclusive OR on the values of
 	// vx and vy, then stores the result in vx.
+
 	chip.v[instr.x] = (chip.v[instr.x] ^ chip.v[instr.y]);
 	increment_pc(chip);
 }
@@ -202,11 +204,12 @@ void ISA::add_vx_vy(chip8& chip, instruction instr) {
 
 	// The values of vx and vy are added together and the result
 	// is stored in vx. If the result overflows, vf is set to 1,
-	// otherwise 0.is greater than
+	// otherwise 0.
 
-	//This is not finished! TODO: Find a way to detect overflow.
-	chip.v[instr.x] = (chip.v[instr.x] + chip.v[instr.y]);
-	chip.v[0xF] = 1;
+	const uint8_t result = chip.v[instr.x] + chip.v[instr.y];
+
+	chip.v[instr.x] = result;
+	chip.v[0xF] = (result < chip.v[instr.x]); //overflow if (a + b) < a
 
 	increment_pc(chip);
 }
@@ -221,6 +224,9 @@ void ISA::sub_vx_vy(chip8& chip, instruction instr) {
 	// If vx > vy, then vf is set to 1, otherwise 0. Then vy is
 	// subtracted from vx, and the results stored in vx.
 
+	chip.v[0xF]     = (chip.v[instr.x] > chip.v[instr.y]) ? 1 : 0;
+	chip.v[instr.x] = chip.v[instr.x] - chip.v[instr.y];
+
 	increment_pc(chip);
 }
 
@@ -229,12 +235,14 @@ void ISA::shr_vx(chip8& chip, instruction instr) {
 
 	// 0x8xy6 - shr vx {, vy}
 	// vx = vy >> 1
-	// vf = vy & 1
+	// vf = LSB(vy)
 
 	// vx is set to the value of vy shifted right by 1. Then, vf
 	// is set to the value of the least significant bit of vy.
 
-	chip.v[instr.x] = (chip.v[instr.y] >> 1);
+	chip.v[instr.x] = chip.v[instr.y] >> 1;
+	chip.v[0xF]     = chip.v[instr.y] &  1;
+
 	increment_pc(chip);
 }
 
@@ -248,6 +256,9 @@ void ISA::subn_vx_vy(chip8& chip, instruction instr) {
 	// If vy > vx, then vf is set to 1, otherwise 0. Then vx is
 	// subtracted from vy, and the results stored in vx.
 
+	chip.v[0xF]     = (chip.v[instr.y] > chip.v[instr.x]) ? 1 : 0;
+	chip.v[instr.x] = chip.v[instr.y] - chip.v[instr.x];
+
 	increment_pc(chip);
 }
 
@@ -256,12 +267,15 @@ void ISA::shl_vx(chip8& chip, instruction instr) {
 
 	// 0x8xyE - shl vx {, vy}
 	// vx = vy << 1
-	// vf = vy & 1
+	// vf = MSB(vy)
 
 	// vx is set to the value of vy shifted right by 1. Then, vf
-	// is set to the value of the least significant bit of vy.
+	// is set to the value of the most significant bit of vy.
 
-	chip.v[instr.x] = (chip.v[instr.y] << 1);
+	using reg_t = std::decay_t<decltype(chip.v[0])>;
+
+	chip.v[0xF]     = chip.v[instr.x] >> ((sizeof(reg_t) * 8) - 1);
+	chip.v[instr.x] = chip.v[instr.x] << 1;
 
 	increment_pc(chip);
 }
@@ -446,10 +460,16 @@ void ISA::add_i_vx(chip8& chip, instruction instr) {
 
 	// 0xFx1E - add i, vx
 	// i = i + vx
+	// vf = overflow
 
 	// The values of i and vx are added, and the results are stored in i.
 	// vf is set to 1 when there is a range overflow (i+vx > 0xFFF),
 	// and to 0 when there isn't.
+
+	const uint16_t sum = chip.i + chip.v[instr.x];
+
+	chip.v[0xF] = (sum < chip.i) ? 1 : 0;    //overflow if (a + b) < a
+	chip.i      = chip.v[instr.x] + chip.i;
 
 	increment_pc(chip);
 }
@@ -498,6 +518,12 @@ void ISA::str_v0_vx(chip8& chip, instruction instr) {
 	// into memory, starting at the address in i. i is set to
 	// i + x + 1 after this operation.
 
+	for (uint8_t i = 0; i <= instr.x; ++i) {
+		chip.memory[chip.i + i] = chip.v[i];
+	}
+
+	chip.i = chip.i + instr.x + 1;
+
 	increment_pc(chip);
 }
 
@@ -510,6 +536,12 @@ void ISA::ld_v0_vx(chip8& chip, instruction instr) {
 	// The interpreter reads values from memory starting at location i
 	// into registers V0 through vx. i is set to i + x + 1 after this
 	// operation.
+
+	for (uint8_t i = 0; i <= instr.x; ++i) {
+		chip.v[i] = chip.memory[chip.i + i];
+	}
+
+	chip.i = chip.i + instr.x + 1;
 
 	increment_pc(chip);
 }
