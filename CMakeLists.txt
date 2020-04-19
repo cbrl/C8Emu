@@ -57,5 +57,5 @@ target_link_libraries(${PROJECT_NAME} ${SDL_LIBS})
 
 # Copy dynamic libraries to build folder
 if (MSVC)
-  configure_file(${CMAKE_SOURCE_DIR}/SDL2/include/x64/SDL2.dll ${CMAKE_BINARY_DIR})
+  configure_file(${CMAKE_SOURCE_DIR}/SDL2/lib/x64/SDL2.dll ${CMAKE_BINARY_DIR})
 endif()
