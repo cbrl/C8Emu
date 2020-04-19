@@ -47,39 +47,20 @@ inline std::string to_string(const instruction& instr) {
 
 	static const char* hex = "0123456789ABCDEF";
 
+    static char nnn_buf[7] = {};
+    static char nn_buf[6] = {};
+    static char n_buf[5] = {};
+
+    std::sprintf(nnn_buf, " 0x%03X", instr.nnn);
+    std::sprintf(nn_buf, " 0x%02X", instr.nn);
+    std::sprintf(n_buf, " 0x%01X", instr.n);
+
     std::string op = to_string(instr.opcode);
-    replace(op,    "vx",      "v"s + hex[instr.x]);
-    replace(op,    "vy",      "v"s + hex[instr.y]);
-    replace(op,   " n", ' ' + std::to_string(instr.n));
-    replace(op,  " nn", ' ' + std::to_string(instr.nn));
-    replace(op, " nnn", ' ' + std::to_string(instr.nnn));
+    replace(op,   "vx", "v"s + hex[instr.x]);
+    replace(op,   "vy", "v"s + hex[instr.y]);
+    replace(op, " nnn",  nnn_buf);
+    replace(op,  " nn",  nn_buf);
+    replace(op,   " n",  n_buf);
 
     return op;
-
-    /* Alternate replace method
-    const std::vector<std::string> op_split = Split(op, " ");
-    std::string instruction = op_split[0];
-    for (size_t i = 1; i < op_split.size(); ++i) {
-        instruction += ' ';
-
-        if (op_split[i] == "vx") {
-            instruction += 'v' + std::to_string(instr.x);
-        }
-        else if (op_split[i] == "vy") {
-            instruction += 'v' + std::to_string(instr.y);
-        }
-        else if (op_split[i] == "n") {
-            instruction += std::to_string(instr.n);
-        }
-        else if (op_split[i] == "nn") {
-            instruction += std::to_string(instr.nn);
-        }
-        else if (op_split[i] == "nnn") {
-            instruction += std::to_string(instr.nnn);
-        }
-        else {
-            instruction += op_split[i];
-        }
-    }
-    */
 }
