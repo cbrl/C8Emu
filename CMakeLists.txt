@@ -10,9 +10,13 @@ else()
   set(RELEASE_OPTIONS -Wall -Wextra -O3 -DNDEBUG)
 endif()
 
-# Find SDL2
-if(NOT MSVC)
+# Include SDL2 files
+if (MSVC)
+  set(SDL_INCLUDE ${CMAKE_SOURCE_DIR}/SDL2/include)
+  set(SDL_LIBS ${CMAKE_SOURCE_DIR}/SDL2/lib/x64/SDL2.lib)
+else()
   find_package(SDL2 REQUIRED)
+  set(SDL_LIBS SDL2)
 endif()
 
 # Collect project files
@@ -42,17 +46,10 @@ target_compile_options(${PROJECT_NAME} PUBLIC "$<$<CONFIG:DEBUG>:${DEBUG_OPTIONS
 target_compile_options(${PROJECT_NAME} PUBLIC "$<$<CONFIG:RELEASE>:${RELEASE_OPTIONS}>")
 
 # Add include directories
-if (MSVC)
-  set(SDL_INCLUDE ${CMAKE_SOURCE_DIR}/SDL2/include)
-endif()
-
 target_include_directories(${PROJECT_NAME} PUBLIC
   ${CMAKE_SOURCE_DIR}/src
   ${SDL_INCLUDE}
 )
 
 # Link libraries
-if (MSVC)
-  target_link_directories(${PROJECT_NAME} ${CMAKE_SOURCE_DIR}/SDL2/lib/x64/)
-endif()
-target_link_libraries(${PROJECT_NAME} SDL2)
+target_link_libraries(${PROJECT_NAME} ${SDL_LIBS})
