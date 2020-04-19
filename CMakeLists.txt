@@ -10,10 +10,25 @@ else()
   set(RELEASE_OPTIONS -Wall -Wextra -O3 -DNDEBUG)
 endif()
 
+if (MSVC)
+  set(LIBS ${CMAKE_SOURCE_DIR}/SDL2/lib/x64/SDL2.lib)
+else()
+  find_package(SDL2 REQUIRED)
+endif()
+
 # Collect project files
-FILE(GLOB_RECURSE SOURCE_FILES
-    ${CMAKE_SOURCE_DIR}/src/*.c
-    ${CMAKE_SOURCE_DIR}/src/*.cpp
+#FILE(GLOB_RECURSE SOURCE_FILES
+#    ${CMAKE_SOURCE_DIR}/src/*.c
+#    ${CMAKE_SOURCE_DIR}/src/*.cpp
+#)
+set(SOURCE_FILES
+  ${CMAKE_SOURCE_DIR}/src/main.cpp
+  ${CMAKE_SOURCE_DIR}/src/chip8/chip8.cpp
+  ${CMAKE_SOURCE_DIR}/src/chip8/isa/isa.cpp
+  ${CMAKE_SOURCE_DIR}/src/emulator/chip8_emulator.cpp
+  ${CMAKE_SOURCE_DIR}/src/input/input.cpp
+  ${CMAKE_SOURCE_DIR}/src/instruction/opcodes.cpp
+  ${CMAKE_SOURCE_DIR}/src/timer/chip_timer.cpp
 )
 
 # Add project executable
@@ -29,3 +44,6 @@ target_compile_options(${PROJECT_NAME} PUBLIC "$<$<CONFIG:RELEASE>:${RELEASE_OPT
 
 # Add include directories
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/src)
+
+# Link libraries
+target_link_libraries(${PROJECT_NAME} ${LIBS} SDL2)
