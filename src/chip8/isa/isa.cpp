@@ -314,10 +314,11 @@ void ISA::rnd_vx_nn(chip8& chip, instruction instr) {
 	// The interpreter generates a random number from 0 to 255, which
 	// is then ANDed with the value nn. The results are stored in vx.
 
-	char rnd;
+	static std::random_device rd;
+	static std::mt19937 gen(rd());
+	static std::uniform_int_distribution dist(0, 255);
 
-	rnd = rand() % 255;
-	chip.v[instr.x] = (instr.nn & rnd);
+	chip.v[instr.x] = dist(gen) & instr.nn;
 	increment_pc(chip);
 }
 
