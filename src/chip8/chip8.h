@@ -8,6 +8,7 @@
 
 #include "input/input.h"
 #include "display/display.h"
+#include "timer/chip_timer.h"
 
 
 class chip8 {
@@ -55,6 +56,9 @@ private:
 
     // Display
     Display<64, 32> display;
+
+    // Delay and Sound timers
+    Chip8Timer timer;
 
     // Font
     const std::array<uint8_t, 80> font = {
