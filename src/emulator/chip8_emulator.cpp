@@ -16,6 +16,9 @@ void Chip8Emulator::run() {
             delta_time = std::chrono::duration<double>{0};
         }
 
+        // Process SDL events
+        media_layer.process_events(stop);
+
         // Render the UI
         render();
     }

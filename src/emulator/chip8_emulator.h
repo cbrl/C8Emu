@@ -1,6 +1,7 @@
 #pragma once
 
 #include "chip8/chip8.h"
+#include "media_layer/media_layer.h"
 
 
 class Chip8Emulator {
@@ -27,6 +28,8 @@ private:
 
     // The CHIP-8 itself
     chip8 chip;
+
+    MediaLayer media_layer;
 
     // The clock speed in Hz
     uint32_t clock_speed = 60;

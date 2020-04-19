@@ -31,6 +31,7 @@ set(SOURCE_FILES
   ${CMAKE_SOURCE_DIR}/src/emulator/chip8_emulator.cpp
   ${CMAKE_SOURCE_DIR}/src/input/input.cpp
   ${CMAKE_SOURCE_DIR}/src/instruction/opcodes.cpp
+  ${CMAKE_SOURCE_DIR}/src/media_layer/media_layer.cpp
   ${CMAKE_SOURCE_DIR}/src/timer/chip_timer.cpp
 )
 
