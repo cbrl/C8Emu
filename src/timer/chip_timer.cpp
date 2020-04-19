@@ -26,7 +26,7 @@ void Chip8Timer::tick() noexcept {
     
 
 	stopwatch.tick();
-	elapsed_time += stopwatch.deltaTime();
+	elapsed_time += stopwatch.delta_time();
 
 	if (elapsed_time >= clock) {
 		if (delay_timer > 0) {

@@ -21,15 +21,15 @@ public:
 	// Update the timer
 	void tick();
 
-	// Get the time elapsed since the last update in the specified units (default: seconds)
+	// Get the time elapsed since the last update in the specified units (default: econds)
 	template<typename PeriodT = std::ratio<1>>
 	[[nodiscard]]
-	std::chrono::duration<double, PeriodT> deltaTime() const;
+	std::chrono::duration<double, PeriodT> delta_time() const;
 
 	// Get the time elapsed since the timer was created or reset in the specified units (default: seconds)
 	template<typename PeriodT = std::ratio<1>>
 	[[nodiscard]]
-	std::chrono::duration<double, PeriodT> totalTime() const;
+	std::chrono::duration<double, PeriodT> total_time() const;
 
 private:
 
@@ -40,8 +40,8 @@ private:
 
 	time_point base_time;
 	time_point prev_time;
-	duration   delta_time;
-	duration   total_time;
+	duration   delta_t;
+	duration   total_t;
 
 	time_point pause_time;
 	duration   pause_duration;

@@ -16,15 +16,32 @@ class chip8 {
 
 public:
 
+    /// Resets the state of the system
 	void reset();
 
+    /// Pause execution
 	void pause();
 
+    /// Resume execution
 	void resume();
 
+    /// Run a single cycle of the syystem
     void run_cycle();
 
-    void load_rom(const std::filesystem::path& file);
+    /**
+     * @brief Load a ROM into memory
+     * 
+     * @details Resets the state of the system and loads the ROM.
+     *          If the file does not exist, cannot be opened, or is
+     *          too large for the memory, then the function will exit
+     *          early without resetting the system.
+     * 
+     * @param[in] file  The path to the ROM to load
+     * 
+     * @return True if the file loaded without error, otherwise false.
+     */
+    [[nodiscard]]
+    bool load_rom(const std::filesystem::path& file);
 
 private:
 

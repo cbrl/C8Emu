@@ -58,11 +58,11 @@ void chip8::run_cycle() {
 }
 
 
-void chip8::load_rom(const std::filesystem::path& file) {
+bool chip8::load_rom(const std::filesystem::path& file) {
     // Check that file exists
     if (!std::filesystem::exists(file)) {
         std::cout << "Error loading ROM " << file << ": The file does not exist\n";
-        return;
+        return false;
     }
 
     // Ensure the ROM will fit in the memory
@@ -72,14 +72,14 @@ void chip8::load_rom(const std::filesystem::path& file) {
         std::cout << "The ROM " << file << " is too big to fit in the CHIP8 memory\n"
                   << "  Memory size: " << (memory.size() - rom_start) << '\n'
                   << "     ROM size: " << file_size << '\n';
-        return;
+        return false;
     }
 
 	// Open the file and check that it's not in an error state
     std::ifstream rom(file, std::ios::binary);
 	if (!rom) {
         std::cout << "Error opening " << file << '\n';
-        return;
+        return false;
     }
 
 	// Reset the device before loading the ROM
@@ -89,4 +89,6 @@ void chip8::load_rom(const std::filesystem::path& file) {
     rom.read(reinterpret_cast<char*>(memory.data() + rom_start), file_size);
 	current_rom = file;
 	rom_end = rom_start + file_size;
+
+	return true;
 }
