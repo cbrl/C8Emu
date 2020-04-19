@@ -46,4 +46,4 @@ target_compile_options(${PROJECT_NAME} PUBLIC "$<$<CONFIG:RELEASE>:${RELEASE_OPT
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/src)
 
 # Link libraries
-target_link_libraries(${PROJECT_NAME} ${LIBS} SDL2)
+target_link_libraries(${PROJECT_NAME} ${LIBS})
