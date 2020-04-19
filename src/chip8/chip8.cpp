@@ -21,6 +21,9 @@ void chip8::reset() {
 	// Empty the stack
 	stack.clear();
 
+	// Clear the display
+	display.clear();
+
 	// Load the font into memory
 	for (size_t i = 0; i < font.size(); ++i) {
 		memory[i] = font[i];
