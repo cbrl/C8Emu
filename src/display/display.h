@@ -24,12 +24,29 @@ public:
 	//--------------------------------------------------------------------------------
 
 	/**
+	 * @brief Enable or disable wrapping
+	 * 
+	 * @details Wrapping will cause pixels that are drawn past the extents of
+	 *          the display to wrap around to the other side.
+	 * 
+	 * @param[in] state  The wrapping state to set
+	 */
+	void set_wrapping(bool state) noexcept {
+		wrapping = state;
+	}
+
+	/**
 	 * @brief Draw a pixel (set to foreground color) at the specified location
 	 * 
 	 * @param[in] x  The x coordinate of the pixel
 	 * @param[in] y  The y coordinate of the pixel
 	 */
 	void draw(size_t x, size_t y) {
+		if (wrapping) {
+			x %= SizeX;
+			y %= SizeY;
+		}
+
 		row(y)[x] = fg_color;
 	}
 
@@ -40,6 +57,11 @@ public:
 	 * @param[in] y  The y coordinate of the pixel
 	 */
 	void erase(size_t x, size_t y) {
+		if (wrapping) {
+			x %= SizeX;
+			y %= SizeY;
+		}
+
 		row(y)[x] = bg_color;
 	}
 
@@ -53,6 +75,11 @@ public:
 	 */
 	[[nodiscard]]
 	bool flip(size_t x, size_t y) {
+		if (wrapping) {
+			x %= SizeX;
+			y %= SizeY;
+		}
+
 		if (row(y)[x] == bg_color) {
 			row(y)[x] = fg_color;
 			return false;
@@ -201,5 +228,8 @@ private:
 	//--------------------------------------------------------------------------------
 	uint32_t bg_color = 0x000000FF;
 	uint32_t fg_color = 0xFFFFFFFF;
+
+	bool wrapping = true;
+
 	std::array<uint32_t, SizeX * SizeY> pixels;
 };
