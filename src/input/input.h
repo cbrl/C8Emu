@@ -51,6 +51,7 @@ public:
      * 
      * @param[in] key  The key to get the state of
      */
+    [[nodiscard]]
     bool is_key_pressed(Keys key) noexcept;
 
     /**

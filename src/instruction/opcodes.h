@@ -59,6 +59,7 @@ enum class Opcodes : uint16_t {
  * 
  * @return The string representation of the opcode
  */
+[[nodiscard]]
 std::string to_string(Opcodes op);
 
 
@@ -69,6 +70,7 @@ std::string to_string(Opcodes op);
  * 
  * @return The opcode value
  */
+[[nodiscard]]
 Opcodes to_opcode(std::string_view op);
 
 
@@ -79,4 +81,5 @@ Opcodes to_opcode(std::string_view op);
  * 
  * @return The opcode value
  */
+[[nodiscard]]
 Opcodes to_opcode(uint16_t instruction);

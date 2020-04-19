@@ -21,7 +21,8 @@ public:
         opcode = to_opcode(op);
     }
 
-    instruction(uint8_t high, uint8_t low) : instruction((static_cast<uint16_t>(high) << 8) | low){
+    instruction(uint8_t high, uint8_t low)
+        : instruction((static_cast<uint16_t>(high) << 8) | low) {
     }
 
 
@@ -40,6 +41,7 @@ public:
 };
 
 
+[[nodiscard]]
 inline std::string to_string(const instruction& instr) {
     using namespace std::string_literals;
 
