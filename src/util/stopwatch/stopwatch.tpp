@@ -8,7 +8,7 @@ template<typename ClockT>
 void Stopwatch<ClockT>::pause() {
 	if (!paused) {
 		pause_time = ClockT::now();
-		delta_time = ClockT::duration(0);
+		delta_time = typename ClockT::duration(0);
 		paused     = true;
 	}
 }
@@ -17,10 +17,12 @@ void Stopwatch<ClockT>::pause() {
 template<typename ClockT>
 void Stopwatch<ClockT>::resume() {
 	if (paused) {
-		const auto start_time = ClockT::now();
+		const auto resume_time = ClockT::now();
 
-		prev_time  = start_time;
-		pause_time = ClockT::duration(0);
+		pause_duration += resume_time - prev_time;
+
+		prev_time  = resume_time;
+		pause_time = typename ClockT::time_point();
 		paused     = false;
 	}
 }

@@ -5,6 +5,14 @@ Chip8Timer::Chip8Timer() {
     reset();
 }
 
+void Chip8Timer::pause() noexcept {
+	stopwatch.pause();
+}
+
+void Chip8Timer::resume() noexcept {
+	stopwatch.resume();
+}
+
 void Chip8Timer::reset() noexcept {
 	stopwatch.reset();
 	elapsed_time = std::chrono::duration<float>{0.0};

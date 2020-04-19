@@ -18,13 +18,9 @@ public:
 
 	void reset();
 
-	void pause() {
-		paused = true;
-	}
+	void pause();
 
-	void resume() {
-		paused = false;
-	}
+	void resume();
 
     void run_cycle();
 
