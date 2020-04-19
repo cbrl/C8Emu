@@ -358,7 +358,7 @@ void ISA::drw_vx_vy_n(chip8& chip, instruction instr) {
 		// Test each bit of the byte. Flip the appropriate pixel if it's 1 (AKA: xor operation)
 		for (uint8_t x = 0; x < 8; ++x) {
 			if ((byte & (1 << x)) != 0) {
-				erased |= chip.display.flip(vx + x, vy + y);
+				erased |= chip.display.flip(vx + (7-x), vy + y);
 			}
 		}
 	}
