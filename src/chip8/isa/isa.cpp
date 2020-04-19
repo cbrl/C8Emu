@@ -334,6 +334,23 @@ void ISA::drw_vx_vy_n(chip8& chip, instruction instr) {
 	// vf is set to 1, otherwise it is set to 0. If the sprite is positioned so part of it is
 	// outside the coordinates of the display, it wraps around to the opposite side of the screen.
 
+	bool erased = false;
+	const uint8_t vx = chip.v[instr.x];
+	const uint8_t vy = chip.v[instr.y];
+
+	for (uint8_t y = 0; y < instr.n; ++y) {
+		const uint8_t byte = chip.memory[chip.i + y];
+
+		// Test each bit of the byte. Flip the appropriate pixel if it's 1 (AKA: xor operation)
+		for (uint8_t x = 0; x < 8; ++x) {
+			if ((byte & (1 << x)) != 0) {
+				erased |= chip.display.flip(vx + x, vy + y);
+			}
+		}
+	}
+
+	chip.v[0xF] = erased;
+
 	increment_pc(chip);
 }
 
