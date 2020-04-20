@@ -5,6 +5,11 @@
 #include <fstream>
 
 
+chip8::chip8() {
+	reset();
+}
+
+
 void chip8::reset() {
 	// Reset registers
 	pc = rom_start;
@@ -28,6 +33,8 @@ void chip8::reset() {
 	for (size_t i = 0; i < font.size(); ++i) {
 		memory[i] = font[i];
 	}
+
+	pause();
 }
 
 
@@ -90,6 +97,9 @@ bool chip8::load_rom(const std::filesystem::path& file) {
     rom.read(reinterpret_cast<char*>(memory.data() + rom_start), file_size);
 	current_rom = file;
 	rom_end = rom_start + file_size;
+
+	// Start emulation
+	resume();
 
 	return true;
 }

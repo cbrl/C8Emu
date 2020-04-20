@@ -17,6 +17,8 @@ class chip8 {
 
 public:
 
+    chip8();
+
     /// Resets the state of the system
 	void reset();
 

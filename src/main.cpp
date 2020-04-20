@@ -8,9 +8,9 @@ int main(int argc, char** argv) {
 
     Chip8Emulator emulator;
 
-    if (!emulator.load_rom("roms/demos/Particle Demo [zeroZshadow, 2008].ch8")) {
-        return 1;
-    }
+    // if (!emulator.load_rom("roms/demos/Particle Demo [zeroZshadow, 2008].ch8")) {
+    //     return 1;
+    // }
 
     emulator.run();
 
