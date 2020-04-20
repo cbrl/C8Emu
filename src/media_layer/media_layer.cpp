@@ -54,7 +54,9 @@ MediaLayer::MediaLayer() {
     const int result = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS);
 
     if (result != 0) {
-        std::cout << "SDL_Init Error: " << SDL_GetError() << '\n';
+        const std::string error = SDL_GetError();
+        std::cout << "SDL_Init Error: " << error << '\n';
+        throw std::runtime_error(error);
     }
 
     window = SDL_CreateWindow(
@@ -67,7 +69,9 @@ MediaLayer::MediaLayer() {
     );
 
     if (!window) {
-        std::cout << "SDL_CreateWindow Error: " << SDL_GetError() << '\n';
+        const std::string error = SDL_GetError();
+        std::cout << "SDL_CreateWindow Error: " << error << '\n';
+        throw std::runtime_error(error);
     }
 
 
@@ -86,13 +90,16 @@ MediaLayer::MediaLayer() {
 
     gl_context = SDL_GL_CreateContext(window);
     if (!gl_context) {
-        std::cout << "SDL_GL_CreateContext Error: " << SDL_GetError() << '\n';
+        const std::string error = SDL_GetError();
+        std::cout << "SDL_GL_CreateContext Error: " << error << '\n';
+        throw std::runtime_error(error);
     }
 
     SDL_GL_MakeCurrent(window, gl_context);
 
     if (gl3wInit() != 0) {
         std::cout << "gl3w initialization failed\n";
+        throw std::runtime_error("gl3w initialization failed");
     }
 
     // Create the CHIP-8 display texture
