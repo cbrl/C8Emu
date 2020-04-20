@@ -13,7 +13,10 @@ endif()
 # Include SDL2 files
 if (MSVC)
   set(SDL_INCLUDE ${CMAKE_SOURCE_DIR}/SDL2/include)
-  set(SDL_LIBS ${CMAKE_SOURCE_DIR}/SDL2/lib/x64/SDL2.lib)
+  set(SDL_LIBS
+    ${CMAKE_SOURCE_DIR}/SDL2/lib/win64/SDL2.lib
+    ${CMAKE_SOURCE_DIR}/SDL2/lib/win64/SDL2main.lib
+  )
 else()
   find_package(SDL2 REQUIRED)
   set(SDL_LIBS SDL2)
@@ -67,5 +70,5 @@ target_link_libraries(${PROJECT_NAME} ${SDL_LIBS} ${OPENGL_LIBRARIES} dl)
 
 # Copy dynamic libraries to build folder
 if (MSVC)
-  configure_file(${CMAKE_SOURCE_DIR}/SDL2/lib/x64/SDL2.dll ${CMAKE_BINARY_DIR})
+  configure_file(${CMAKE_SOURCE_DIR}/SDL2/lib/win64/SDL2.dll ${CMAKE_BINARY_DIR})
 endif()
