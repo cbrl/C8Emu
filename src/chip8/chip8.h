@@ -63,7 +63,7 @@ private:
 	bool paused = false;
 
     // The clock speed in Hz
-    uint32_t clock_rate = 60;
+    uint32_t clock_rate = 500;
 
     // System memory
     std::array<uint8_t, 4096> memory;
