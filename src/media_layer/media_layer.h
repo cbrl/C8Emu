@@ -14,9 +14,28 @@ public:
     MediaLayer();
     ~MediaLayer();
 
+    /**
+     * @brief Processes pending SDL events
+     * 
+     * @param[in] chip  A reference to an instance of a chip8, for passing input state.
+     * @param[in] quit  A reference to a flag that indicates when to quit the main loop.
+     */
     void process_events(chip8& chip, bool& quit);
+
+    /**
+     * @brief Render the GUI
+     * 
+     * @param[in] chip  A reference to an instance of a chip8 to render the GUI for
+     */
     void render(chip8& chip);
 
+    /**
+     * @brief Set the display scaling
+     * @details The CHIP-8 display is only 64x32, so it needs to be scaled
+     *          in order to be sufficiently visible on a modern display.
+     *
+     * @param[in] scale  The integer scaling for the display
+     */
     void set_display_scale(uint8_t scale);
 
 private:
@@ -36,6 +55,7 @@ private:
     GLuint texture;
     uint32_t display_scale = 10;
 
+    // GUI widgets
     FileSelector file_selector;
     MemoryEditor mem_editor;
 };
