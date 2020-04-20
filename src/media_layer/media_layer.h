@@ -3,6 +3,10 @@
 #include <SDL2/SDL.h>
 #include "gl3w/GL/gl3w.h"
 
+#include "imgui/imgui.h"
+#include "gui_widgets/imgui_memory_editor.h"
+#include "gui_widgets/file_selector.h"
+
 class chip8;
 
 class MediaLayer {
@@ -31,4 +35,7 @@ private:
     // The CHIP-8 display texture and its scale
     GLuint texture;
     uint32_t display_scale = 10;
+
+    FileSelector file_selector;
+    MemoryEditor mem_editor;
 };

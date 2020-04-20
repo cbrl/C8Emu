@@ -3,7 +3,6 @@
 #include "chip8/chip8.h"
 #include "instruction/instruction.h"
 
-#include "imgui/imgui.h"
 #include "imgui/imgui_impl_opengl3.h"
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/misc/cpp/imgui_stdlib.h"
@@ -109,6 +108,8 @@ MediaLayer::MediaLayer() {
     ImGui::CreateContext();
     ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
     ImGui_ImplOpenGL3_Init("#version 330");
+
+	ImGui::StyleColorsDark();
 }
 
 
@@ -205,28 +206,37 @@ void MediaLayer::render_ui(chip8& chip) {
 
     // ImGui::ShowDemoWindow();
 
+	if (ImGui::BeginMainMenuBar()) {
+		if (ImGui::MenuItem("Open ROM")) {
+			file_selector.open_selector();
+		}
+	}
+	ImGui::EndMainMenuBar();
+
 
     //----------------------------------------------------------------------------------
 	// CHIP-8 Status
 	//----------------------------------------------------------------------------------
 	if (ImGui::Begin("CHIP-8", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
 
-		float reg_x = 100;
-		float reg_y = 350;
-
 		//----------------------------------------------------------------------------------
 		// Registers
 		//----------------------------------------------------------------------------------
+		const float reg_x = 100;
+		const float reg_y = 350;
+
 		ImGui::BeginChild("Registers", {reg_x, reg_y}, true);
+		{
 			ImGui::Text("Registers");
 			ImGui::Separator();
 
 			for (uint8_t i = 0; i <= 0xF; ++i) {
-				ImGui::Text("v%x: 0x%02X", i, chip.v[i]);
+				ImGui::Text("v%X: 0x%02X", i, chip.v[i]);
 			}
 			ImGui::Separator();
 			ImGui::Text(" I: 0x%04X", chip.i);
 			ImGui::Text("PC: 0x%04X", chip.pc);
+		}
 		ImGui::EndChild();
 
 
@@ -237,11 +247,12 @@ void MediaLayer::render_ui(chip8& chip) {
 		
 		ImGui::BeginGroup();
 		{
+			const float prog_x = 200;
+			const float prog_y = 200;
+
 			//----------------------------------------------------------------------------------
 			// Program Instructions
 			//----------------------------------------------------------------------------------
-			float prog_x = 200;
-			float prog_y = 200;
 			ImGui::BeginChild("Program", {prog_x, prog_y}, true, ImGuiWindowFlags_NoScrollbar);
 			{
 				ImGui::Text("Program Instructions");
@@ -262,7 +273,7 @@ void MediaLayer::render_ui(chip8& chip) {
 			//----------------------------------------------------------------------------------
 			// Settings
 			//----------------------------------------------------------------------------------
-			ImGui::BeginChild("Chip8 Settings", {prog_x, 0}, true);
+			ImGui::BeginChild("Chip8 Settings", {prog_x, 0}, true, ImGuiWindowFlags_NoScrollbar);
 			{
 				ImGui::Text("Settings");
 				ImGui::Separator();
@@ -278,6 +289,12 @@ void MediaLayer::render_ui(chip8& chip) {
 
 				if (ImGui::Button("Reset System")) {
 					chip.reset();
+				}
+				if (ImGui::Button("Pause")) {
+					chip.pause();
+				}
+				if (ImGui::Button("Resume")) {
+					chip.resume();
 				}
 			}
 			ImGui::EndChild();
@@ -357,45 +374,13 @@ void MediaLayer::render_ui(chip8& chip) {
 	//----------------------------------------------------------------------------------
 	// ROM
 	//----------------------------------------------------------------------------------
-	if (ImGui::Begin("ROM", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-		
-		static std::string filename;
-		static std::filesystem::path path;
-
-		static const std::function<void(std::filesystem::directory_iterator)> list_files = [](std::filesystem::directory_iterator it) {
-			for (auto& d : it) {
-				auto d_path = d.path();
-				if (d.is_directory()) {
-					bool node_open = ImGui::TreeNode(d_path.filename().string().c_str());
-					if (node_open) {
-						list_files(std::filesystem::directory_iterator(d_path));
-						ImGui::TreePop();
-					}
-				}
-				else if (d_path.extension() == ".ch8") {
-					if (ImGui::Selectable(d_path.filename().string().c_str())) {
-						path = d_path;
-						filename = path.filename().string();
-					}
-				}
-			}
-		};
-		
-		if (ImGui::BeginChild("ROM_List", ImVec2(350, 250), true, ImGuiWindowFlags_NoSavedSettings)) {
-			bool node_open = ImGui::TreeNodeEx("./", ImGuiTreeNodeFlags_DefaultOpen);
-			if (node_open) {
-				list_files(std::filesystem::directory_iterator("./"));
-				ImGui::TreePop();
-			}
-		}
-		ImGui::EndChild();
-
-		ImGui::PushItemWidth(-1);
-		ImGui::InputText("", &filename, ImGuiInputTextFlags_ReadOnly);
-		ImGui::PopItemWidth();
-		if (ImGui::Button("Load")) {
-			(void)chip.load_rom(path);
-		}
+	if (file_selector.update()) {
+		(void)chip.load_rom(file_selector.get_selected_file());
 	}
-	ImGui::End();
+
+
+	//----------------------------------------------------------------------------------
+	// Memory
+	//----------------------------------------------------------------------------------
+	mem_editor.DrawWindow("Memory", chip.memory.data(), chip.memory.size());
 }
