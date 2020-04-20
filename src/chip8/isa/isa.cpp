@@ -428,6 +428,7 @@ void ISA::key_vx(chip8& chip, instruction instr) {
 	auto func = [&](Keys key) {
 		chip.v[instr.x] = static_cast<uint8_t>(key);
 		chip.resume();
+		increment_pc(chip);
 	};
 
 	chip.input.register_keypress_event(func);
