@@ -59,6 +59,11 @@ MediaLayer::MediaLayer() {
         throw std::runtime_error(error);
     }
 
+    // Initialize beeper
+    if (!beeper.init_audio()) {
+        //...
+    }
+
 
     //--------------------------------------------------------------------------------
     // OpenGL Init
@@ -161,6 +166,14 @@ void MediaLayer::process_events(chip8& chip, bool& quit) {
 
             default: break;            
         }
+    }
+
+    // Process sound output
+    if (chip.timer.is_sound()) {
+        beeper.start_beep();
+    }
+    else {
+        beeper.stop_beep();
     }
 }
 

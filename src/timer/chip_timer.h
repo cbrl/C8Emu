@@ -33,7 +33,7 @@ public:
      * @return The number of ticks before the delay timer hits 0
      */
     [[nodiscard]]
-    uint8_t getDelay() const noexcept;
+    uint8_t get_delay() const noexcept;
 
     /**
      * @brief Set the delay timer
@@ -43,7 +43,7 @@ public:
      * 
      * @param[in] value  The number of ticks to count down from
      */
-    void setDelay(uint8_t value) noexcept;
+    void set_delay(uint8_t value) noexcept;
 
 
     //------------------------------------------------------------
@@ -59,17 +59,17 @@ public:
      * 
      * @param[in] value  The number of ticks to count down from
      */
-    void setSound(uint8_t value) noexcept;
+    void set_sound(uint8_t value) noexcept;
 
 	/**
      * @brief Determine if a sound should be produced
      * @return True if sound should be produced
      */
     [[nodiscard]]
-	bool isSound() const noexcept;
-
+	bool is_sound() const noexcept;
 
 private:
+
     //------------------------------------------------------------
     // Member Variables
     //------------------------------------------------------------

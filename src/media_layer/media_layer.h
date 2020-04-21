@@ -3,6 +3,7 @@
 #include <map>
 
 #include "input/input.h"
+#include "beeper/beeper.h"
 
 #include <SDL2/SDL.h>
 #include "gl3w/GL/gl3w.h"
@@ -58,6 +59,9 @@ private:
     // The CHIP-8 display texture and its scale
     GLuint texture;
     uint32_t display_scale = 10;
+
+    // CHIP-8 audio output
+    Beeper beeper;
 
     // GUI widgets
     FileSelector file_selector;

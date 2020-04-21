@@ -40,18 +40,18 @@ void Chip8Timer::tick() noexcept {
 	}
 }
 
-uint8_t Chip8Timer::getDelay() const noexcept {
+uint8_t Chip8Timer::get_delay() const noexcept {
 	return delay_timer;
 }
 
-void Chip8Timer::setDelay(uint8_t value) noexcept {
+void Chip8Timer::set_delay(uint8_t value) noexcept {
 	delay_timer = value;
 }
 
-void Chip8Timer::setSound(uint8_t value) noexcept {
+void Chip8Timer::set_sound(uint8_t value) noexcept {
 	sound_timer = value;
 }
 
-bool Chip8Timer::isSound() const noexcept {
+bool Chip8Timer::is_sound() const noexcept {
 	return sound_timer > 0;
 }

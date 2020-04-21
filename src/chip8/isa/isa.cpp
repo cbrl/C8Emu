@@ -428,7 +428,7 @@ void ISA::gdly_vx(chip8& chip, instruction instr) {
 
 	// The value of DT is placed into vx.
 
-	chip.v[instr.x] = chip.timer.getDelay();
+	chip.v[instr.x] = chip.timer.get_delay();
 	increment_pc(chip);
 }
 
@@ -460,7 +460,7 @@ void ISA::sdly_vx(chip8& chip, instruction instr) {
 
 	// DT is set to the value of vx.
 
-	chip.timer.setDelay(chip.v[instr.x]);
+	chip.timer.set_delay(chip.v[instr.x]);
 	increment_pc(chip);
 }
 
@@ -472,7 +472,7 @@ void ISA::ssnd_vx(chip8& chip, instruction instr) {
 
 	// ST is set to the value of vx.
 
-	chip.timer.setSound(chip.v[instr.x]);
+	chip.timer.set_sound(chip.v[instr.x]);
 	increment_pc(chip);
 }
 
