@@ -119,14 +119,31 @@ void FileSelector::list_files(std::filesystem::directory_iterator it) {
 	if (update_file_list) {
 		update_file_list = false;
 
+		std::vector<std::filesystem::path> folders;
+		std::vector<std::filesystem::path> files;
+
 		for (const auto p : it) {
 			const auto p_path = p.path();
 			if (p.is_directory()) {
-				curr_dir_list.emplace_back("[Dir]  " + p_path.filename().string(), p_path);
+				folders.emplace_back(p_path);
 			}
 			else {
-				curr_file_list.emplace_back("[File]  " + p_path.filename().string(), p_path);
+				files.emplace_back(p_path);
 			}
+		}
+
+		auto cmp = [](const std::filesystem::path& lhs, const std::filesystem::path& rhs) {
+			return lhs.filename().string() < rhs.filename().string();
+		};
+
+		std::sort(folders.begin(), folders.end(), cmp);
+		std::sort(files.begin(), files.end(), cmp);
+
+		for (const auto& folder : folders) {
+			curr_dir_list.emplace_back("[Dir]  " + folder.filename().string(), folder);
+		}
+		for (const auto& file : files) {
+			curr_file_list.emplace_back("[File]  " + file.filename().string(), file);
 		}
 	}
 
