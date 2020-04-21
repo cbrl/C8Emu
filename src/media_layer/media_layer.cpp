@@ -11,10 +11,11 @@
 
 
 static void RGBA2FloatArray(uint32_t rgba, float array[4]) {
-    array[0] = static_cast<float>((rgba >> 24) & 0xFF) / 255.0f;
-    array[1] = static_cast<float>((rgba >> 16) & 0xFF) / 255.0f;
-    array[2] = static_cast<float>((rgba >> 8)  & 0xFF) / 255.0f;
-    array[3] = static_cast<float>( rgba        & 0xFF) / 255.0f;
+    static constexpr float normalize = 1.0f / 255.0f;
+    array[0] = static_cast<float>((rgba >> 24) & 0xFF) * normalize;
+    array[1] = static_cast<float>((rgba >> 16) & 0xFF) * normalize;
+    array[2] = static_cast<float>((rgba >> 8)  & 0xFF) * normalize;
+    array[3] = static_cast<float>( rgba        & 0xFF) * normalize;
 }
 
 static uint32_t FloatArray2RGBA(const float array[4]) {
@@ -302,10 +303,16 @@ void MediaLayer::render_ui(chip8& chip) {
 
 				ImGui::Spacing();
 
+                // Reset and reload the ROM
 				if (ImGui::Button("Reset System")) {
+                    const auto rom = chip.current_rom;
 					chip.reset();
+                    if (std::filesystem::exists(rom)) {
+                        (void)chip.load_rom(rom);
+                    }
 				}
 
+                // Pause/Resume/Step buttons
                 if (chip.is_paused()) {
                     if (ImGui::Button("Resume")) {
                         chip.resume();
@@ -355,6 +362,7 @@ void MediaLayer::render_ui(chip8& chip) {
 		const float x_size = chip.display.size_x() * display_scale;
 		const float y_size = chip.display.size_y() * display_scale;
 
+        // Draw the display texture
 		ImGui::BeginChild("Image", {x_size + 16.0f, y_size + 16.0f}, true);
 			ImGui::Image((ImTextureID)(intptr_t)texture, ImVec2{x_size, y_size});
 		ImGui::EndChild();
@@ -363,6 +371,7 @@ void MediaLayer::render_ui(chip8& chip) {
 		ImGui::Separator();
 		ImGui::Spacing();
 
+        // Display settings
 		ImGui::BeginChild("Display Settings", {200, 100});
 		{
             static const uint8_t scale_step = 1;
@@ -394,7 +403,7 @@ void MediaLayer::render_ui(chip8& chip) {
 	}
 	ImGui::End();
 
-
+ImGui::ColorConvertFloat4ToU32
 	//----------------------------------------------------------------------------------
 	// ROM
 	//----------------------------------------------------------------------------------
