@@ -23,10 +23,15 @@ public:
 	void reset();
 
     /// Pause execution
-	void pause();
+	void pause() noexcept;
+
+    [[nodiscard]]
+    bool is_paused() const noexcept {
+        return paused;
+    }
 
     /// Resume execution
-	void resume();
+	void resume() noexcept;
 
     /// Run a single cycle of the syystem
     void run_cycle();
@@ -47,6 +52,7 @@ public:
     bool load_rom(const std::filesystem::path& file);
 
 
+    [[nodiscard]]
     uint32_t get_clock_rate() const noexcept {
         return clock_rate;
     }
@@ -54,7 +60,23 @@ public:
         clock_rate = rate;
     }
 
+    [[nodiscard]]
+    bool is_legacy_mode() const noexcept {
+        return legacy_mode;
+    }
+    void set_legacy_mode(bool state) noexcept {
+        legacy_mode = state;
+    }
+
 private:
+
+    //--------------------------------------------------------------------------------
+    // Execution State
+    //--------------------------------------------------------------------------------
+
+    // Enables legacy mode. Modifies the behavior of some instructions that
+    // function differently according to the S-CHIP documentation.
+    bool legacy_mode = true;
 
 	// The currently loaded ROM and its size
 	std::filesystem::path current_rom;
@@ -64,6 +86,11 @@ private:
 
     // The clock speed in Hz
     uint32_t clock_rate = 500;
+
+
+    //--------------------------------------------------------------------------------
+    // Processor State
+    //--------------------------------------------------------------------------------
 
     // System memory
     std::array<uint8_t, 4096> memory;

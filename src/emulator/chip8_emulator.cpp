@@ -10,8 +10,8 @@ void Chip8Emulator::run() {
         timer.tick();
         clock_dt += timer.delta_time();
 
-        // If the elapsed time is greater than the clock period, then update.
-        if (clock_dt.count() >= (1.0 / chip.get_clock_rate())) {
+        // If not paused and the elapsed time is greater than the clock period, then update.
+        if (clock_dt.count() >= (1.0 / chip.get_clock_rate()) && !chip.is_paused()) {
             chip.run_cycle();
             clock_dt = std::chrono::duration<double>{0};
         }

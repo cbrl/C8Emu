@@ -237,11 +237,20 @@ void ISA::shr_vx(chip8& chip, instruction instr) {
 	// vx = vy >> 1
 	// vf = LSB(vy)
 
-	// vx is set to the value of vy shifted right by 1. Then, vf
-	// is set to the value of the least significant bit of vy.
+	// NON-LEGACY MODE: vf is set to the value of the least significant bit of vx.
+	// Then, vx is set to the value of itself shifted right by 1. 
+	//
+	// LEGACY MODE: vf is set to the value of the least significant bit of vy.
+	// Then vx is set to the value of vy shifted right by 1.
 
-	chip.v[instr.x] = chip.v[instr.y] >> 1;
-	chip.v[0xF]     = chip.v[instr.y] &  1;
+	if (chip.is_legacy_mode()) {
+		chip.v[0xF]     = chip.v[instr.y] &  1;
+		chip.v[instr.x] = chip.v[instr.y] >> 1;
+	}
+	else {
+		chip.v[0xF]     = chip.v[instr.x] &  1;
+		chip.v[instr.x] = chip.v[instr.x] >> 1;
+	}
 
 	increment_pc(chip);
 }
@@ -269,13 +278,22 @@ void ISA::shl_vx(chip8& chip, instruction instr) {
 	// vx = vy << 1
 	// vf = MSB(vy)
 
-	// vx is set to the value of vy shifted right by 1. Then, vf
-	// is set to the value of the most significant bit of vy.
+	// NON-LEGACY MODE: vf is set to the value of the most significant bit of vx.
+	// Then, vx is set to the value of itself shifted left by 1. 
+	//
+	// LEGACY MODE: vf is set to the value of the most significant bit of vy.
+	// Then vx is set to the value of vy shifted left by 1.
 
 	using reg_t = std::decay_t<decltype(chip.v[0])>;
 
-	chip.v[0xF]     = chip.v[instr.x] >> ((sizeof(reg_t) * 8) - 1);
-	chip.v[instr.x] = chip.v[instr.x] << 1;
+	if (chip.is_legacy_mode()) {
+		chip.v[0xF]     = chip.v[instr.y] >> ((sizeof(reg_t) * 8) - 1);
+		chip.v[instr.x] = chip.v[instr.y] << 1;
+	}
+	else {
+		chip.v[0xF]     = chip.v[instr.x] >> ((sizeof(reg_t) * 8) - 1);
+		chip.v[instr.x] = chip.v[instr.x] << 1;
+	}
 
 	increment_pc(chip);
 }
@@ -518,14 +536,17 @@ void ISA::str_v0_vx(chip8& chip, instruction instr) {
 	// Store registers v0 through vx in memory starting at location i
 
 	// The interpreter copies the values of registers v0 through vx
-	// into memory, starting at the address in i. i is set to
-	// i + x + 1 after this operation.
+	// into memory, starting at the address in i.
+	//
+	// LEGACY MODE: i is set to i + x + 1 after this operation.
 
 	for (uint8_t i = 0; i <= instr.x; ++i) {
 		chip.memory[chip.i + i] = chip.v[i];
 	}
 
-	chip.i = chip.i + instr.x + 1;
+	if (chip.is_legacy_mode()) {
+		chip.i = chip.i + instr.x + 1;
+	}
 
 	increment_pc(chip);
 }
@@ -537,14 +558,17 @@ void ISA::ld_v0_vx(chip8& chip, instruction instr) {
 	// Read registers v0 through vx from memory starting at location i
 
 	// The interpreter reads values from memory starting at location i
-	// into registers V0 through vx. i is set to i + x + 1 after this
-	// operation.
+	// into registers V0 through vx.
+	//
+	// LEGACY MODE: i is set to i + x + 1 after this operation.
 
 	for (uint8_t i = 0; i <= instr.x; ++i) {
 		chip.v[i] = chip.memory[chip.i + i];
 	}
 
-	chip.i = chip.i + instr.x + 1;
+	if (chip.is_legacy_mode()) {
+		chip.i = chip.i + instr.x + 1;
+	}
 
 	increment_pc(chip);
 }

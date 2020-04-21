@@ -38,23 +38,21 @@ void chip8::reset() {
 }
 
 
-void chip8::pause() {
+void chip8::pause() noexcept {
 	paused = true;
-	timer.pause();
+	//timer.pause();
 }
 
 
-void chip8::resume() {
+void chip8::resume() noexcept {
 	paused = false;
-	timer.resume();
+	//timer.resume();
 }
 
 
 void chip8::run_cycle() {
 	// Update timer
 	timer.tick();
-
-	if (paused) return;
 
 	if (pc < rom_end) {  //check that the PC is within the ROM's memory region
 		ISA::execute_cycle(*this);

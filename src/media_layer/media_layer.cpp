@@ -209,10 +209,22 @@ void MediaLayer::render_ui(chip8& chip) {
 
     // ImGui::ShowDemoWindow();
 
+    //----------------------------------------------------------------------------------
+	// Menu Bar
+	//----------------------------------------------------------------------------------
 	if (ImGui::BeginMainMenuBar()) {
 		if (ImGui::MenuItem("Open ROM")) {
 			file_selector.open_selector();
 		}
+
+        if (ImGui::BeginMenu("Options")) {
+            bool legacy = chip.is_legacy_mode();
+            if (ImGui::Checkbox("Legacy Mode", &legacy)) {
+                chip.set_legacy_mode(legacy);
+            }
+
+            ImGui::EndMenu();
+        }
 	}
 	ImGui::EndMainMenuBar();
 
@@ -293,12 +305,21 @@ void MediaLayer::render_ui(chip8& chip) {
 				if (ImGui::Button("Reset System")) {
 					chip.reset();
 				}
-				if (ImGui::Button("Pause")) {
-					chip.pause();
-				}
-				if (ImGui::Button("Resume")) {
-					chip.resume();
-				}
+
+                if (chip.is_paused()) {
+                    if (ImGui::Button("Resume")) {
+                        chip.resume();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Step")) {
+                        chip.run_cycle();
+                    }
+                }
+                else {
+                    if (ImGui::Button("Pause")) {
+                        chip.pause();
+                    }
+                }
 			}
 			ImGui::EndChild();
 		}
