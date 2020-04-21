@@ -10,14 +10,14 @@
 #include <iostream>
 
 
-void RGBA2FloatArray(uint32_t rgba, float array[4]) {
+static void RGBA2FloatArray(uint32_t rgba, float array[4]) {
     array[0] = static_cast<float>((rgba >> 24) & 0xFF) / 255.0f;
     array[1] = static_cast<float>((rgba >> 16) & 0xFF) / 255.0f;
     array[2] = static_cast<float>((rgba >> 8)  & 0xFF) / 255.0f;
     array[3] = static_cast<float>( rgba        & 0xFF) / 255.0f;
 }
 
-uint32_t FloatArray2RGBA(const float array[4]) {
+static uint32_t FloatArray2RGBA(const float array[4]) {
     uint32_t rgba = 0;
     rgba |= static_cast<uint32_t>(array[0] * 255) << 24;
     rgba |= static_cast<uint32_t>(array[1] * 255) << 16;
@@ -25,26 +25,6 @@ uint32_t FloatArray2RGBA(const float array[4]) {
     rgba |= static_cast<uint32_t>(array[3] * 255);
     return rgba;
 }
-
-
-static const std::map<SDL_Scancode, Keys> key_map = {
-    {SDL_SCANCODE_KP_0, Keys::Key0},
-    {SDL_SCANCODE_KP_1, Keys::Key1},
-    {SDL_SCANCODE_KP_2, Keys::Key2},
-    {SDL_SCANCODE_KP_3, Keys::Key3},
-    {SDL_SCANCODE_KP_4, Keys::Key4},
-    {SDL_SCANCODE_KP_5, Keys::Key5},
-    {SDL_SCANCODE_KP_6, Keys::Key6},
-    {SDL_SCANCODE_KP_7, Keys::Key7},
-    {SDL_SCANCODE_KP_8, Keys::Key8},
-    {SDL_SCANCODE_KP_9, Keys::Key9},
-    {SDL_SCANCODE_A,    Keys::KeyA},
-    {SDL_SCANCODE_B,    Keys::KeyB},
-    {SDL_SCANCODE_C,    Keys::KeyC},
-    {SDL_SCANCODE_D,    Keys::KeyD},
-    {SDL_SCANCODE_E,    Keys::KeyE},
-    {SDL_SCANCODE_F,    Keys::KeyF},
-};
 
 
 MediaLayer::MediaLayer() {
@@ -71,6 +51,10 @@ MediaLayer::MediaLayer() {
     if (!window) {
         const std::string error = SDL_GetError();
         std::cout << "SDL_CreateWindow Error: " << error << '\n';
+
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+
         throw std::runtime_error(error);
     }
 
@@ -92,6 +76,10 @@ MediaLayer::MediaLayer() {
     if (!gl_context) {
         const std::string error = SDL_GetError();
         std::cout << "SDL_GL_CreateContext Error: " << error << '\n';
+
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+
         throw std::runtime_error(error);
     }
 
@@ -99,6 +87,10 @@ MediaLayer::MediaLayer() {
 
     if (gl3wInit() != 0) {
         std::cout << "gl3w initialization failed\n";
+
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+
         throw std::runtime_error("gl3w initialization failed");
     }
 
@@ -121,6 +113,10 @@ MediaLayer::MediaLayer() {
 
 
 MediaLayer::~MediaLayer() {
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL2_Shutdown();
+    ImGui::DestroyContext();
+
     if (window) {
         SDL_DestroyWindow(window);
     }

@@ -1,5 +1,9 @@
 #pragma once
 
+#include <map>
+
+#include "input/input.h"
+
 #include <SDL2/SDL.h>
 #include "gl3w/GL/gl3w.h"
 
@@ -58,4 +62,24 @@ private:
     // GUI widgets
     FileSelector file_selector;
     MemoryEditor mem_editor;
+
+    // The mapping from keyboard keys to CHIP-8 keys
+    std::map<SDL_Scancode, Keys> key_map = {
+        {SDL_SCANCODE_KP_0, Keys::Key0},
+        {SDL_SCANCODE_KP_1, Keys::Key1},
+        {SDL_SCANCODE_KP_2, Keys::Key2},
+        {SDL_SCANCODE_KP_3, Keys::Key3},
+        {SDL_SCANCODE_KP_4, Keys::Key4},
+        {SDL_SCANCODE_KP_5, Keys::Key5},
+        {SDL_SCANCODE_KP_6, Keys::Key6},
+        {SDL_SCANCODE_KP_7, Keys::Key7},
+        {SDL_SCANCODE_KP_8, Keys::Key8},
+        {SDL_SCANCODE_KP_9, Keys::Key9},
+        {SDL_SCANCODE_A,    Keys::KeyA},
+        {SDL_SCANCODE_B,    Keys::KeyB},
+        {SDL_SCANCODE_C,    Keys::KeyC},
+        {SDL_SCANCODE_D,    Keys::KeyD},
+        {SDL_SCANCODE_E,    Keys::KeyE},
+        {SDL_SCANCODE_F,    Keys::KeyF},
+    };
 };
