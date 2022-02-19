@@ -44,7 +44,7 @@ public:
      *          too large for the memory, then the function will exit
      *          early without resetting the system.
      * 
-     * @param[in] file  The path to the ROM to load
+     * @param[in] file  The path to the ROM file
      * 
      * @return True if the file loaded without error, otherwise false.
      */
@@ -60,10 +60,13 @@ public:
         clock_rate = rate;
     }
 
+    /// Get the legacy mode status. Legacy mode changes the behavior of certain instructions. Newer ROMS might not expect legacy behavior.
     [[nodiscard]]
     auto is_legacy_mode() const noexcept -> bool {
         return legacy_mode;
     }
+
+    /// Enable/disable legacy mode, which changes the behavior of certain instructions. Newer ROMS might not expect legacy behavior.
     auto set_legacy_mode(bool state) noexcept -> void {
         legacy_mode = state;
     }
