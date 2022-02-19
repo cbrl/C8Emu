@@ -12,16 +12,16 @@ public:
     //------------------------------------------------------------
 
     /// Update the timers
-    void tick() noexcept;
+    auto tick() noexcept -> void;
 
     /// Pause the timers
-    void pause() noexcept;
+    auto pause() noexcept -> void;
 
     /// Resume the timers
-    void resume() noexcept;
+    auto resume() noexcept -> void;
 
     // Reset the timers
-    void reset() noexcept;
+    auto reset() noexcept -> void;
 
 
     //------------------------------------------------------------
@@ -33,7 +33,7 @@ public:
      * @return The number of ticks before the delay timer hits 0
      */
     [[nodiscard]]
-    uint8_t get_delay() const noexcept;
+    auto get_delay() const noexcept -> uint8_t;
 
     /**
      * @brief Set the delay timer
@@ -43,7 +43,7 @@ public:
      * 
      * @param[in] value  The number of ticks to count down from
      */
-    void set_delay(uint8_t value) noexcept;
+    auto set_delay(uint8_t value) noexcept -> void;
 
 
     //------------------------------------------------------------
@@ -59,14 +59,14 @@ public:
      * 
      * @param[in] value  The number of ticks to count down from
      */
-    void set_sound(uint8_t value) noexcept;
+    auto set_sound(uint8_t value) noexcept -> void;
 
 	/**
      * @brief Determine if a sound should be produced
      * @return True if sound should be produced
      */
     [[nodiscard]]
-	bool is_sound() const noexcept;
+    auto is_sound() const noexcept -> bool;
 
 private:
 

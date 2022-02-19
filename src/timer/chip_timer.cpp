@@ -5,22 +5,22 @@ Chip8Timer::Chip8Timer() {
     reset();
 }
 
-void Chip8Timer::pause() noexcept {
+auto Chip8Timer::pause() noexcept -> void {
 	stopwatch.pause();
 }
 
-void Chip8Timer::resume() noexcept {
+auto Chip8Timer::resume() noexcept -> void {
 	stopwatch.resume();
 }
 
-void Chip8Timer::reset() noexcept {
+auto Chip8Timer::reset() noexcept -> void {
 	stopwatch.reset();
 	elapsed_time = std::chrono::duration<float>{0.0};
     delay_timer = 0;
     sound_timer = 0; 
 }
 
-void Chip8Timer::tick() noexcept {
+auto Chip8Timer::tick() noexcept -> void {
 	using namespace std::chrono_literals;
 	static constexpr std::chrono::duration<float> clock{1.0 / 60.0};
     
@@ -40,18 +40,18 @@ void Chip8Timer::tick() noexcept {
 	}
 }
 
-uint8_t Chip8Timer::get_delay() const noexcept {
+auto Chip8Timer::get_delay() const noexcept -> uint8_t {
 	return delay_timer;
 }
 
-void Chip8Timer::set_delay(uint8_t value) noexcept {
+auto Chip8Timer::set_delay(uint8_t value) noexcept -> void {
 	delay_timer = value;
 }
 
-void Chip8Timer::set_sound(uint8_t value) noexcept {
+auto Chip8Timer::set_sound(uint8_t value) noexcept -> void {
 	sound_timer = value;
 }
 
-bool Chip8Timer::is_sound() const noexcept {
+auto Chip8Timer::is_sound() const noexcept -> bool {
 	return sound_timer > 0;
 }

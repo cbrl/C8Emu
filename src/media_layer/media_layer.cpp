@@ -3,6 +3,7 @@
 #include "instruction/instruction.h"
 
 #include <iostream>
+#include <span>
 
 #include "imgui/imgui_impl_opengl3.h"
 #include "imgui/imgui_impl_sdl.h"
@@ -10,7 +11,7 @@
 
 
 
-static void RGBA2FloatArray(uint32_t rgba, float array[4]) {
+static auto RGBA2FloatArray(uint32_t rgba, std::span<float, 4> array) -> void {
     static constexpr float normalize = 1.0f / 255.0f;
     array[0] = static_cast<float>((rgba >> 24) & 0xFF) * normalize;
     array[1] = static_cast<float>((rgba >> 16) & 0xFF) * normalize;
@@ -18,7 +19,7 @@ static void RGBA2FloatArray(uint32_t rgba, float array[4]) {
     array[3] = static_cast<float>( rgba        & 0xFF) * normalize;
 }
 
-static uint32_t FloatArray2RGBA(const float array[4]) {
+static auto FloatArray2RGBA(std::span<const float, 4> array) -> uint32_t {
     uint32_t rgba = 0;
     rgba |= static_cast<uint32_t>(array[0] * 255) << 24;
     rgba |= static_cast<uint32_t>(array[1] * 255) << 16;
@@ -94,14 +95,6 @@ MediaLayer::MediaLayer() {
 
     // Load OpenGL functions
     gladLoadGLLoader(SDL_GL_GetProcAddress);
-    //if (gl3wInit() != 0) {
-    //    std::cout << "gl3w initialization failed\n";
-    //
-    //    SDL_DestroyWindow(window);
-    //    SDL_Quit();
-    //
-    //    throw std::runtime_error("gl3w initialization failed");
-    //}
 
     // Create the CHIP-8 display texture
     glGenTextures(1, &texture);
