@@ -5,7 +5,7 @@
 
 
 auto ISA::execute_cycle(chip8& chip) -> void {
-	instruction instr{chip.memory[chip.pc], chip.memory[chip.pc+1]};
+	const auto instr = instruction{chip.memory[chip.pc], chip.memory[chip.pc+1]};
     opcode_map.at(instr.opcode)(chip, instr);
 }
 
