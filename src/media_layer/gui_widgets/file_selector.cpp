@@ -27,8 +27,6 @@ void FileSelector::set_path(const std::filesystem::path& path) {
 	current_path = std::filesystem::absolute(path);
 	nav_bar_text = current_path.string();
 
-	curr_file_list.clear();
-	curr_dir_list.clear();
 	update_file_list = true;
 }
 
@@ -55,7 +53,7 @@ bool FileSelector::update() {
 
 			std::string path_string = current_path.string();
 			ImGui::PushItemWidth(350);
-			ImGui::InputText("", &nav_bar_text);
+			ImGui::InputText("##nav_bar", &nav_bar_text);
 			ImGui::PopItemWidth();
 
 			ImGui::SameLine();
@@ -83,7 +81,7 @@ bool FileSelector::update() {
 			// Filename Box
 			std::string selected_string = selected_file.string();
 			ImGui::PushItemWidth(250);
-			ImGui::InputText("", &selected_string, ImGuiInputTextFlags_ReadOnly);
+			ImGui::InputText("##file_bar", &selected_string, ImGuiInputTextFlags_ReadOnly);
 			ImGui::PopItemWidth();
 			
 			ImGui::SameLine();
@@ -117,6 +115,8 @@ void FileSelector::list_files(std::filesystem::directory_iterator it) {
 
 	// Update files
 	if (update_file_list) {
+		curr_file_list.clear();
+		curr_dir_list.clear();
 		update_file_list = false;
 
 		std::vector<std::filesystem::path> folders;
