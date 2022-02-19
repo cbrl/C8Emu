@@ -1,23 +1,21 @@
 #include "isa.h"
 #include "../chip8.h"
 
-#include <iostream>
 #include <random>
-#include <sstream>
 
 
-void ISA::execute_cycle(chip8& chip) {
+auto ISA::execute_cycle(chip8& chip) -> void {
 	instruction instr{chip.memory[chip.pc], chip.memory[chip.pc+1]};
     opcode_map.at(instr.opcode)(chip, instr);
 }
 
 
-void ISA::increment_pc(chip8& chip) noexcept {
+auto ISA::increment_pc(chip8& chip) noexcept -> void {
 	chip.pc += 2;
 }
 
 
-void ISA::cls(chip8& chip, instruction instr) {
+auto ISA::cls(chip8& chip, instruction instr) -> void {
 
 	// 0x00E0 - cls
 	// Clear the display
@@ -27,7 +25,7 @@ void ISA::cls(chip8& chip, instruction instr) {
 }
 
 
-void ISA::ret(chip8& chip, instruction instr) {
+auto ISA::ret(chip8& chip, instruction instr) -> void {
 
 	// 0x00EE - ret
 	// Return from a subroutine
@@ -41,7 +39,7 @@ void ISA::ret(chip8& chip, instruction instr) {
 }
 
 
-void ISA::sys_nnn(chip8& chip, instruction instr) {
+auto ISA::sys_nnn(chip8& chip, instruction instr) -> void {
 
 	// 0x0nnn - sys addr
 	// Jump to a machine code routine at nnn
@@ -52,7 +50,7 @@ void ISA::sys_nnn(chip8& chip, instruction instr) {
 	increment_pc(chip);
 }
 
-void ISA::jmp_nnn(chip8& chip, instruction instr) {
+auto ISA::jmp_nnn(chip8& chip, instruction instr) -> void {
 
 	// 0x1nnn - jmp addr
 	// Jump to location nnn
@@ -63,7 +61,7 @@ void ISA::jmp_nnn(chip8& chip, instruction instr) {
 }
 
 
-void ISA::call_nnn(chip8& chip, instruction instr) {
+auto ISA::call_nnn(chip8& chip, instruction instr) -> void {
 
 	// 0x2nnn - call addr
 	// Call subroutine at nnn
@@ -76,7 +74,7 @@ void ISA::call_nnn(chip8& chip, instruction instr) {
 }
 
 
-void ISA::se_vx_nn(chip8& chip, instruction instr) {
+auto ISA::se_vx_nn(chip8& chip, instruction instr) -> void {
 
 	// 0x3xnn - se vx, byte
 	// Skip next instr if vx = nn
@@ -91,7 +89,7 @@ void ISA::se_vx_nn(chip8& chip, instruction instr) {
 }
 
 
-void ISA::sne_vx_nn(chip8& chip, instruction instr) {
+auto ISA::sne_vx_nn(chip8& chip, instruction instr) -> void {
 
 	// 0x4xnn - sne vx, byte
 	// Skip next instr if vx != nn
@@ -106,7 +104,7 @@ void ISA::sne_vx_nn(chip8& chip, instruction instr) {
 }
 
 
-void ISA::se_vx_vy(chip8& chip, instruction instr) {
+auto ISA::se_vx_vy(chip8& chip, instruction instr) -> void {
 
 	// 0x5xy0 - se vx, vy
 	// Skip next instr if vx = vy
@@ -121,7 +119,7 @@ void ISA::se_vx_vy(chip8& chip, instruction instr) {
 }
 
 
-void ISA::mov_vx_nn(chip8& chip, instruction instr) {
+auto ISA::mov_vx_nn(chip8& chip, instruction instr) -> void {
 
 	// 0x6xnn - mov vx, byte
 	// vx = nn
@@ -133,7 +131,7 @@ void ISA::mov_vx_nn(chip8& chip, instruction instr) {
 }
 
 
-void ISA::add_vx_nn(chip8& chip, instruction instr) {
+auto ISA::add_vx_nn(chip8& chip, instruction instr) -> void {
 
 	// 0x7xnn - add vx, byte
 	// vx = vx + nn
@@ -145,7 +143,7 @@ void ISA::add_vx_nn(chip8& chip, instruction instr) {
 }
 
 
-void ISA::mov_vx_vy(chip8& chip, instruction instr) {
+auto ISA::mov_vx_vy(chip8& chip, instruction instr) -> void {
 
 	// 8xy0 - mov vx, vy
 	// vx = vy
@@ -157,7 +155,7 @@ void ISA::mov_vx_vy(chip8& chip, instruction instr) {
 }
 
 
-void ISA::or_vx_vy(chip8& chip, instruction instr) {
+auto ISA::or_vx_vy(chip8& chip, instruction instr) -> void {
 
 	// 0x8xy1 - or vx, vy
 	// vx = vx | vy
@@ -170,7 +168,7 @@ void ISA::or_vx_vy(chip8& chip, instruction instr) {
 }
 
 
-void ISA::and_vx_vy(chip8& chip, instruction instr) {
+auto ISA::and_vx_vy(chip8& chip, instruction instr) -> void {
 
 	// 0x8xy2 - and vx, vy
 	// vx = vx & vy
@@ -183,7 +181,7 @@ void ISA::and_vx_vy(chip8& chip, instruction instr) {
 }
 
 
-void ISA::xor_vx_vy(chip8& chip, instruction instr) {
+auto ISA::xor_vx_vy(chip8& chip, instruction instr) -> void {
 
 	// 0x8xy3 - xor vx, vy
 	// vx = vx ^ vy
@@ -196,7 +194,7 @@ void ISA::xor_vx_vy(chip8& chip, instruction instr) {
 }
 
 
-void ISA::add_vx_vy(chip8& chip, instruction instr) {
+auto ISA::add_vx_vy(chip8& chip, instruction instr) -> void {
 
 	// 0x8xy4 - add vx, vy
 	// vx = vx + vy
@@ -215,7 +213,7 @@ void ISA::add_vx_vy(chip8& chip, instruction instr) {
 }
 
 
-void ISA::sub_vx_vy(chip8& chip, instruction instr) {
+auto ISA::sub_vx_vy(chip8& chip, instruction instr) -> void {
 
 	// 0x8xy5 - sub vx, vy
 	// vx = vx - vy
@@ -231,7 +229,7 @@ void ISA::sub_vx_vy(chip8& chip, instruction instr) {
 }
 
 
-void ISA::shr_vx(chip8& chip, instruction instr) {
+auto ISA::shr_vx(chip8& chip, instruction instr) -> void {
 
 	// 0x8xy6 - shr vx {, vy}
 	// vx = vy >> 1
@@ -256,7 +254,7 @@ void ISA::shr_vx(chip8& chip, instruction instr) {
 }
 
 
-void ISA::subn_vx_vy(chip8& chip, instruction instr) {
+auto ISA::subn_vx_vy(chip8& chip, instruction instr) -> void {
 
 	// 0x8xy7 - subn vx, vy
 	// vx = vy - vx
@@ -272,7 +270,7 @@ void ISA::subn_vx_vy(chip8& chip, instruction instr) {
 }
 
 
-void ISA::shl_vx(chip8& chip, instruction instr) {
+auto ISA::shl_vx(chip8& chip, instruction instr) -> void {
 
 	// 0x8xyE - shl vx {, vy}
 	// vx = vy << 1
@@ -299,7 +297,7 @@ void ISA::shl_vx(chip8& chip, instruction instr) {
 }
 
 
-void ISA::sne_vx_vy(chip8& chip, instruction instr) {
+auto ISA::sne_vx_vy(chip8& chip, instruction instr) -> void {
 
 	// 0x9xy0 - sne vx, vy
 	// Skip next instr if vx != vy
@@ -315,7 +313,7 @@ void ISA::sne_vx_vy(chip8& chip, instruction instr) {
 }
 
 
-void ISA::mov_i_nnn(chip8& chip, instruction instr) {
+auto ISA::mov_i_nnn(chip8& chip, instruction instr) -> void {
 
 	// 0xAnnn - mov i, addr
 	// i = nnn
@@ -327,7 +325,7 @@ void ISA::mov_i_nnn(chip8& chip, instruction instr) {
 }
 
 
-void ISA::jmp_v0_nnn(chip8& chip, instruction instr) {
+auto ISA::jmp_v0_nnn(chip8& chip, instruction instr) -> void {
 
 	// 0xBnnn - jmp v0, addr
 	// Jump to location nnn + V0
@@ -338,7 +336,7 @@ void ISA::jmp_v0_nnn(chip8& chip, instruction instr) {
 }
 
 
-void ISA::rnd_vx_nn(chip8& chip, instruction instr) {
+auto ISA::rnd_vx_nn(chip8& chip, instruction instr) -> void {
 
 	// 0xCxnn - rnd vx, byte
 	// vx = random byte AND nn
@@ -355,7 +353,7 @@ void ISA::rnd_vx_nn(chip8& chip, instruction instr) {
 }
 
 
-void ISA::drw_vx_vy_n(chip8& chip, instruction instr) {
+auto ISA::drw_vx_vy_n(chip8& chip, instruction instr) -> void {
 
 	// 0xDxyn - drw vx, vy, n
 	// Display n-byte sprite starting at memory location i at (vx, vy), set vf = collision.
@@ -387,7 +385,7 @@ void ISA::drw_vx_vy_n(chip8& chip, instruction instr) {
 }
 
 
-void ISA::skp_vx(chip8& chip, instruction instr) {
+auto ISA::skp_vx(chip8& chip, instruction instr) -> void {
 
 	// 0xEx9E - skp vx
 	// Skip next instr if key with the value of vx is pressed
@@ -404,7 +402,7 @@ void ISA::skp_vx(chip8& chip, instruction instr) {
 }
 
 
-void ISA::sknp_vx(chip8& chip, instruction instr) {
+auto ISA::sknp_vx(chip8& chip, instruction instr) -> void {
 
 	// 0xExA1 - sknp vx
 	// Skip next instr if key with the value of vx is not pressed
@@ -421,7 +419,7 @@ void ISA::sknp_vx(chip8& chip, instruction instr) {
 }
 
 
-void ISA::gdly_vx(chip8& chip, instruction instr) {
+auto ISA::gdly_vx(chip8& chip, instruction instr) -> void {
 
 	// 0xFx07 - gdly vx
 	// vx = delay timer value
@@ -433,7 +431,7 @@ void ISA::gdly_vx(chip8& chip, instruction instr) {
 }
 
 
-void ISA::key_vx(chip8& chip, instruction instr) {
+auto ISA::key_vx(chip8& chip, instruction instr) -> void {
 
 	// 0xFx0A - key vx
 	// Wait for a key press, store the value of the key in vx
@@ -453,7 +451,7 @@ void ISA::key_vx(chip8& chip, instruction instr) {
 }
 
 
-void ISA::sdly_vx(chip8& chip, instruction instr) {
+auto ISA::sdly_vx(chip8& chip, instruction instr) -> void {
 
 	// 0xFx15 - sdly vx
 	// delay timer = vx
@@ -465,7 +463,7 @@ void ISA::sdly_vx(chip8& chip, instruction instr) {
 }
 
 
-void ISA::ssnd_vx(chip8& chip, instruction instr) {
+auto ISA::ssnd_vx(chip8& chip, instruction instr) -> void {
 
 	// 0xFx18 - ssnd vx
 	// sound timer = vx
@@ -477,7 +475,7 @@ void ISA::ssnd_vx(chip8& chip, instruction instr) {
 }
 
 
-void ISA::add_i_vx(chip8& chip, instruction instr) {
+auto ISA::add_i_vx(chip8& chip, instruction instr) -> void {
 
 	// 0xFx1E - add i, vx
 	// i = i + vx
@@ -496,7 +494,7 @@ void ISA::add_i_vx(chip8& chip, instruction instr) {
 }
 
 
-void ISA::font_vx(chip8& chip, instruction instr) {
+auto ISA::font_vx(chip8& chip, instruction instr) -> void {
 
 	// Fx29 - font vx
 	// i = location of sprite for digit vx
@@ -511,7 +509,7 @@ void ISA::font_vx(chip8& chip, instruction instr) {
 }
 
 
-void ISA::bcd_vx(chip8& chip, instruction instr) {
+auto ISA::bcd_vx(chip8& chip, instruction instr) -> void {
 
 	// Fx33 - bcd vx
 	// Store BCD representation of vx in memory locations i, i+1, and i+2
@@ -530,7 +528,7 @@ void ISA::bcd_vx(chip8& chip, instruction instr) {
 }
 
 
-void ISA::str_v0_vx(chip8& chip, instruction instr) {
+auto ISA::str_v0_vx(chip8& chip, instruction instr) -> void {
 
 	// 0xFx55 - str v0, vx
 	// Store registers v0 through vx in memory starting at location i
@@ -552,7 +550,7 @@ void ISA::str_v0_vx(chip8& chip, instruction instr) {
 }
 
 
-void ISA::ld_v0_vx(chip8& chip, instruction instr) {
+auto ISA::ld_v0_vx(chip8& chip, instruction instr) -> void {
 
 	// 0xFx65 - ld_v0_vx
 	// Read registers v0 through vx from memory starting at location i

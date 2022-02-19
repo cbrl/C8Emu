@@ -1,12 +1,14 @@
 #include "beeper.h"
+
 #include <iostream>
+#include <numbers>
 
 
 Beeper::~Beeper() {
     deinit_audio();
 }
 
-bool Beeper::init_audio() {
+auto Beeper::init_audio() -> bool {
     deinit_audio();
 
     SDL_AudioSpec audio_spec = {};
@@ -26,28 +28,28 @@ bool Beeper::init_audio() {
     return true;
 }
 
-void Beeper::audio_callback(void* user_data, Uint8* raw_buffer, int bytes) {
+auto Beeper::audio_callback(void* user_data, Uint8* raw_buffer, int bytes) -> void {
     auto& beeper = *static_cast<Beeper*>(user_data);
 
-    float* buffer    = reinterpret_cast<float*>(raw_buffer);
-    const int length = bytes / 4; //4 bytes per sample for AUDIO_F32SYS
+    auto* buffer = reinterpret_cast<float*>(raw_buffer);
+    const auto length = bytes / 4; //4 bytes per sample for AUDIO_F32SYS
 
     for(int i = 0; i < length; ++i, ++beeper.sample_num) {
-        const float time = static_cast<float>(beeper.sample_num) / static_cast<float>(beeper.sample_rate);
-        buffer[i] = static_cast<float>(beeper.amplitude * sin(2.0f * M_PI * beeper.frequency * time)); //render sine wave
+        const auto time = static_cast<float>(beeper.sample_num) / static_cast<float>(beeper.sample_rate);
+        buffer[i] = static_cast<float>(beeper.amplitude * sin(2.0f * std::numbers::pi * beeper.frequency * time)); //render sine wave
     }
 }
 
-void Beeper::deinit_audio() {
+auto Beeper::deinit_audio() -> void {
     if (audio_device != 0) {
         SDL_CloseAudioDevice(audio_device);
     }
 }
 
-void Beeper::start_beep() {
+auto Beeper::start_beep() -> void {
     SDL_PauseAudioDevice(audio_device, 0);
 }
 
-void Beeper::stop_beep() {
+auto Beeper::stop_beep() -> void {
     SDL_PauseAudioDevice(audio_device, 1);
 }

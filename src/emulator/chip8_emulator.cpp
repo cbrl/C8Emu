@@ -1,7 +1,7 @@
 #include "chip8_emulator.h"
 
 
-void Chip8Emulator::run() {
+auto Chip8Emulator::run() -> void {
     bool stop = false;
     std::chrono::duration<double> clock_dt{0};
 
@@ -25,6 +25,6 @@ void Chip8Emulator::run() {
 }
 
 
-void Chip8Emulator::render() {
+auto Chip8Emulator::render() -> void {
     media_layer.render(chip);
 }

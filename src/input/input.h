@@ -36,7 +36,7 @@ enum class Keys : uint8_t {
 class Input final {
 public:
     /// Reset the state of all keys
-    void reset() noexcept;
+    auto reset() noexcept -> void;
 
     /**
      * @brief Set the state of a key
@@ -44,7 +44,7 @@ public:
      * @param[in] key      The key to set the state of
      * @param[in] pressed  The state of the key
      */
-    void set_key_state(Keys key, bool pressed);
+    auto set_key_state(Keys key, bool pressed) -> void;
 
     /**
      * @brief Query the state of a key
@@ -52,14 +52,14 @@ public:
      * @param[in] key  The key to get the state of
      */
     [[nodiscard]]
-    bool is_key_pressed(Keys key) noexcept;
+    auto is_key_pressed(Keys key) noexcept -> bool;
 
     /**
      * @brief Provide a function to be called when a key is pressed
      * 
      * @param[in] func  The function to be called on keypress
      */
-    void register_keypress_event(const std::function<void(Keys key)>& func) noexcept;
+    auto register_keypress_event(const std::function<void(Keys key)>& func) noexcept -> void;
 
 private:
 

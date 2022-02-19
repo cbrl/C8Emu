@@ -20,21 +20,21 @@ public:
     chip8();
 
     /// Resets the state of the system
-	void reset();
+	auto reset() -> void;
 
     /// Pause execution
-	void pause() noexcept;
+	auto pause() noexcept -> void;
 
     [[nodiscard]]
-    bool is_paused() const noexcept {
+    auto is_paused() const noexcept -> bool {
         return paused;
     }
 
     /// Resume execution
-	void resume() noexcept;
+	auto resume() noexcept -> void;
 
     /// Run a single cycle of the syystem
-    void run_cycle();
+    auto run_cycle() -> void;
 
     /**
      * @brief Load a ROM into memory
@@ -49,22 +49,22 @@ public:
      * @return True if the file loaded without error, otherwise false.
      */
     [[nodiscard]]
-    bool load_rom(const std::filesystem::path& file);
+    auto load_rom(const std::filesystem::path& file) -> bool;
 
 
     [[nodiscard]]
-    uint32_t get_clock_rate() const noexcept {
+    auto get_clock_rate() const noexcept -> uint32_t {
         return clock_rate;
     }
-    void set_clock_rate(uint32_t rate) noexcept {
+    auto set_clock_rate(uint32_t rate) noexcept -> void {
         clock_rate = rate;
     }
 
     [[nodiscard]]
-    bool is_legacy_mode() const noexcept {
+    auto is_legacy_mode() const noexcept -> bool {
         return legacy_mode;
     }
-    void set_legacy_mode(bool state) noexcept {
+    auto set_legacy_mode(bool state) noexcept -> void {
         legacy_mode = state;
     }
 

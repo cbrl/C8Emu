@@ -11,19 +11,19 @@ public:
      * @copydoc chip8::load_rom
      */
     [[nodiscard]]
-    bool load_rom(const std::filesystem::path& file) {
+    auto load_rom(const std::filesystem::path& file) -> bool {
         return chip.load_rom(file);
     }
 
     /**
      * @brief Run the emulator update loop
      */
-    void run();
+    auto run() -> void;
 
 private:
 
     /// Renders the user interface
-    void render();
+    auto render() -> void;
 
 
     // The CHIP-8 itself

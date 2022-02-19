@@ -1,8 +1,12 @@
 #pragma once
 
+#include <format>
+#include <iostream>
+#include <string>
+#include <string_view>
+
 #include "opcodes.h"
 #include "util/strings.h"
-#include <iostream>
 
 
 /**
@@ -42,25 +46,18 @@ public:
 
 
 [[nodiscard]]
-inline std::string to_string(const instruction& instr) {
+inline auto to_string(const instruction& instr) -> std::string {
     using namespace std::string_literals;
+    using namespace std::string_view_literals;
 
-	static const char* hex = "0123456789ABCDEF";
+    static constexpr auto hex = "0123456789ABCDEF"sv;
 
-    static char nnn_buf[7] = {};
-    static char nn_buf[6] = {};
-    static char n_buf[5] = {};
-
-    std::sprintf(nnn_buf, " 0x%03X", instr.nnn);
-    std::sprintf(nn_buf, " 0x%02X", instr.nn);
-    std::sprintf(n_buf, " 0x%01X", instr.n);
-
-    std::string op = to_string(instr.opcode);
-    replace(op,   "vx", "v"s + hex[instr.x]);
-    replace(op,   "vy", "v"s + hex[instr.y]);
-    replace(op, " nnn",  nnn_buf);
-    replace(op,  " nn",  nn_buf);
-    replace(op,   " n",  n_buf);
+    auto op = to_string(instr.opcode);
+    replace(op,   "vx", std::format("v{}", hex.at(instr.x)));
+    replace(op,   "vy", std::format("v{}", hex.at(instr.y)));
+    replace(op, " nnn", std::format(" {:#03X}", instr.nnn));
+    replace(op,  " nn", std::format(" {:#02X}", instr.nn));
+    replace(op,   " n", std::format(" {:#01X}", instr.n));
 
     return op;
 }

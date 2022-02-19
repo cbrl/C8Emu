@@ -6,7 +6,7 @@
 #include "beeper/beeper.h"
 
 #include <SDL2/SDL.h>
-#include "gl3w/GL/gl3w.h"
+#include <glad/glad.h>
 
 #include "imgui/imgui.h"
 #include "gui_widgets/imgui_memory_editor.h"
@@ -25,14 +25,14 @@ public:
      * @param[in] chip  A reference to an instance of a chip8, for passing input state.
      * @param[in] quit  A reference to a flag that indicates when to quit the main loop.
      */
-    void process_events(chip8& chip, bool& quit);
+    auto process_events(chip8& chip, bool& quit) -> void;
 
     /**
      * @brief Render the GUI
      * 
      * @param[in] chip  A reference to an instance of a chip8 to render the GUI for
      */
-    void render(chip8& chip);
+    auto render(chip8& chip) -> void;
 
     /**
      * @brief Set the display scaling
@@ -41,23 +41,23 @@ public:
      *
      * @param[in] scale  The integer scaling for the display
      */
-    void set_display_scale(uint8_t scale);
+    auto set_display_scale(uint8_t scale) -> void;
 
 private:
 
-    void begin_frame();
-    void end_frame();
-    void render_ui(chip8& chip);
+    auto begin_frame() -> void;
+    auto end_frame() -> void;
+    auto render_ui(chip8& chip) -> void;
 
 
     // The SDL window
-    SDL_Window* window;
+    SDL_Window* window = nullptr;
 
     // The OpenGL context for the SDL window
-    SDL_GLContext gl_context;
+    SDL_GLContext gl_context = {};
 
     // The CHIP-8 display texture and its scale
-    GLuint texture;
+    GLuint texture = 0;
     uint32_t display_scale = 10;
 
     // CHIP-8 audio output
@@ -68,7 +68,7 @@ private:
     MemoryEditor mem_editor;
 
     // The mapping from keyboard keys to CHIP-8 keys
-    std::map<SDL_Scancode, Keys> key_map = {
+    static inline const std::map<SDL_Scancode, Keys> key_map = {
         {SDL_SCANCODE_KP_0, Keys::Key0},
         {SDL_SCANCODE_KP_1, Keys::Key1},
         {SDL_SCANCODE_KP_2, Keys::Key2},

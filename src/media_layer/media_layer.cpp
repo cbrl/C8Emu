@@ -1,13 +1,13 @@
 #include "media_layer.h"
-
 #include "chip8/chip8.h"
 #include "instruction/instruction.h"
+
+#include <iostream>
 
 #include "imgui/imgui_impl_opengl3.h"
 #include "imgui/imgui_impl_sdl.h"
 #include "imgui/misc/cpp/imgui_stdlib.h"
 
-#include <iostream>
 
 
 static void RGBA2FloatArray(uint32_t rgba, float array[4]) {
@@ -68,14 +68,15 @@ MediaLayer::MediaLayer() {
     //--------------------------------------------------------------------------------
     // OpenGL Init
     //--------------------------------------------------------------------------------
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
+    // Use VSync
     SDL_GL_SetSwapInterval(1);
 
     gl_context = SDL_GL_CreateContext(window);
@@ -91,14 +92,16 @@ MediaLayer::MediaLayer() {
 
     SDL_GL_MakeCurrent(window, gl_context);
 
-    if (gl3wInit() != 0) {
-        std::cout << "gl3w initialization failed\n";
-
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-
-        throw std::runtime_error("gl3w initialization failed");
-    }
+    // Load OpenGL functions
+    gladLoadGLLoader(SDL_GL_GetProcAddress);
+    //if (gl3wInit() != 0) {
+    //    std::cout << "gl3w initialization failed\n";
+    //
+    //    SDL_DestroyWindow(window);
+    //    SDL_Quit();
+    //
+    //    throw std::runtime_error("gl3w initialization failed");
+    //}
 
     // Create the CHIP-8 display texture
     glGenTextures(1, &texture);
@@ -372,8 +375,8 @@ void MediaLayer::render_ui(chip8& chip) {
 	//----------------------------------------------------------------------------------
 	if (ImGui::Begin("Display", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
 
-		const float x_size = chip.display.size_x() * display_scale;
-		const float y_size = chip.display.size_y() * display_scale;
+		const auto x_size = static_cast<float>(chip.display.size_x() * display_scale);
+		const auto y_size = static_cast<float>(chip.display.size_y() * display_scale);
 
         // Draw the display texture
 		ImGui::BeginChild("Image", {x_size + 16.0f, y_size + 16.0f}, true);

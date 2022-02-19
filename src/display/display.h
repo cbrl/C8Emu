@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <span>
 
 
 /**
@@ -31,7 +32,7 @@ public:
 	 * 
 	 * @param[in] state  The wrapping state to set
 	 */
-	void set_wrapping(bool state) noexcept {
+	auto set_wrapping(bool state) noexcept -> void {
 		wrapping = state;
 	}
 
@@ -39,7 +40,7 @@ public:
 	 * @brief Get the wrapping state
 	 * @return The wrapping state
 	 */
-	bool get_wrapping() const noexcept {
+	auto get_wrapping() const noexcept -> bool {
 		return wrapping;
 	}
 
@@ -50,7 +51,7 @@ public:
 	 * @param[in] x  The x coordinate of the pixel
 	 * @param[in] y  The y coordinate of the pixel
 	 */
-	void draw(size_t x, size_t y) {
+	auto draw(size_t x, size_t y) -> void {
 		if (wrapping) {
 			x %= SizeX;
 			y %= SizeY;
@@ -65,7 +66,7 @@ public:
 	 * @param[in] x  The x coordinate of the pixel
 	 * @param[in] y  The y coordinate of the pixel
 	 */
-	void erase(size_t x, size_t y) {
+	auto erase(size_t x, size_t y) -> void {
 		if (wrapping) {
 			x %= SizeX;
 			y %= SizeY;
@@ -83,7 +84,7 @@ public:
 	 * @return True if the pixel was flipped from the foreground color to the background color, otherwise false.
 	 */
 	[[nodiscard]]
-	bool flip(size_t x, size_t y) {
+	auto flip(size_t x, size_t y) -> bool {
 		if (wrapping) {
 			x %= SizeX;
 			y %= SizeY;
@@ -102,7 +103,7 @@ public:
 	/**
 	 * @brief Clear the entire screen
 	 */
-	void clear() noexcept {
+	auto clear() noexcept -> void {
 		pixels.fill(bg_color);
 	}
 
@@ -116,7 +117,7 @@ public:
 	 * @return The background color of the display
 	 */
 	[[nodiscard]]
-	uint32_t get_background_color() const noexcept {
+	auto get_background_color() const noexcept -> uint32_t {
 		return bg_color;
 	}
 
@@ -125,7 +126,7 @@ public:
 	 * 
 	 * @param[in] new_color  The new background color for the display
 	 */
-	void set_background_color(uint32_t new_color) noexcept {
+	auto set_background_color(uint32_t new_color) noexcept -> void {
 		for (size_t y = 0; y < SizeY; ++y) {
 			for (size_t x = 0; x < SizeX; ++x) {
 				if (row(y)[x] == bg_color) {
@@ -147,7 +148,7 @@ public:
 	 * @return The foreground color of the display
 	 */
 	[[nodiscard]]
-	uint32_t get_foreground_color() const noexcept {
+	auto get_foreground_color() const noexcept -> uint32_t {
 		return fg_color;
 	}
 
@@ -157,7 +158,7 @@ public:
 	 * 
 	 * @param[in] new_color  The new foreground color for the display
 	 */
-	void set_foreground_color(uint32_t new_color) noexcept {
+	auto set_foreground_color(uint32_t new_color) noexcept -> void {
 		// Update drawn pixels
 		for (size_t y = 0; y < SizeY; ++y) {
 			for (size_t x = 0; x < SizeX; ++x) {
@@ -180,7 +181,7 @@ public:
 	 * @return The X dimension
 	 */
 	[[nodiscard]]
-	size_t size_x() const noexcept {
+	auto size_x() const noexcept -> size_t {
 		return SizeX;
 	}
 
@@ -189,7 +190,7 @@ public:
 	 * @return The Y dimension
 	 */
 	[[nodiscard]]
-	size_t size_y() const noexcept {
+	auto size_y() const noexcept -> size_t {
 		return SizeY;
 	}
 
@@ -199,7 +200,7 @@ public:
 	 * @return The number of pixels. Equal to sizeX() * sizeY().
 	 */
 	[[nodiscard]]
-	size_t size() const noexcept {
+	auto size() const noexcept -> size_t {
 		return pixels.size();
 	}
 
@@ -213,7 +214,7 @@ public:
 	 * @return A pointer to the array of pixels
 	 */
 	[[nodiscard]]
-	const uint32_t* data() const noexcept {
+	auto data() const noexcept -> const uint32_t* {
 		return pixels.data();
 	}
 
@@ -222,14 +223,14 @@ public:
 	 * @return A pointer to the array of pixels
 	 */
 	[[nodiscard]]
-	uint32_t* data() noexcept {
+	auto data() noexcept -> uint32_t* {
 		return pixels.data();
 	}
 
 private:
 
-	uint32_t* row(size_t n) {
-		return &pixels[SizeX * n];
+	auto row(size_t n) -> std::span<uint32_t, SizeX> {
+		return std::span<uint32_t, SizeX>{&pixels[SizeX * n], SizeX};
 	}
 
 	//--------------------------------------------------------------------------------

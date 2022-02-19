@@ -10,7 +10,7 @@ chip8::chip8() {
 }
 
 
-void chip8::reset() {
+auto chip8::reset() -> void {
 	// Reset registers
 	pc = rom_start;
 	i = 0;
@@ -38,19 +38,19 @@ void chip8::reset() {
 }
 
 
-void chip8::pause() noexcept {
+auto chip8::pause() noexcept -> void {
 	paused = true;
 	//timer.pause();
 }
 
 
-void chip8::resume() noexcept {
+auto chip8::resume() noexcept -> void {
 	paused = false;
 	//timer.resume();
 }
 
 
-void chip8::run_cycle() {
+auto chip8::run_cycle() -> void {
 	// Update timer
 	timer.tick();
 
@@ -64,7 +64,7 @@ void chip8::run_cycle() {
 }
 
 
-bool chip8::load_rom(const std::filesystem::path& file) {
+auto chip8::load_rom(const std::filesystem::path& file) -> bool {
     // Check that file exists
     if (!std::filesystem::exists(file)) {
         std::cout << "Error loading ROM " << file << ": The file does not exist\n";

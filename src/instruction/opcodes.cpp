@@ -2,7 +2,7 @@
 #include <map>
 
 
-std::string to_string(Opcodes op) {
+auto to_string(Opcodes op) -> std::string {
     static const std::map<Opcodes, std::string> opcode_map = {
         {Opcodes::sys_nnn,     "sys nnn"},
         {Opcodes::cls,         "cls"},
@@ -46,7 +46,7 @@ std::string to_string(Opcodes op) {
 }
 
 
-Opcodes to_opcode(std::string_view op) {
+auto to_opcode(std::string_view op) -> Opcodes {
     static const std::map<std::string, Opcodes, std::less<>> opcode_map = {
         {"sys nnn",     Opcodes::sys_nnn},
         {"cls",         Opcodes::cls},
@@ -92,7 +92,7 @@ Opcodes to_opcode(std::string_view op) {
 }
 
 
-Opcodes to_opcode(uint16_t instruction) {
+auto to_opcode(uint16_t instruction) -> Opcodes {
     const uint16_t msb = instruction & 0xF000;
 
     switch (msb) {
