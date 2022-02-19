@@ -14,16 +14,28 @@ find_package(OpenGL REQUIRED)
 find_package(glad REQUIRED)
 find_package(SDL2 REQUIRED)
 
+# Collect ImGui files
+set(IMGUI_SRC
+    ${CMAKE_SOURCE_DIR}/imgui/imgui.cpp
+    ${CMAKE_SOURCE_DIR}/imgui/imgui_demo.cpp
+    ${CMAKE_SOURCE_DIR}/imgui/imgui_draw.cpp
+    ${CMAKE_SOURCE_DIR}/imgui/imgui_tables.cpp
+    ${CMAKE_SOURCE_DIR}/imgui/imgui_widgets.cpp
+    ${CMAKE_SOURCE_DIR}/imgui/backends/imgui_impl_opengl3.cpp
+    ${CMAKE_SOURCE_DIR}/imgui/backends/imgui_impl_sdl.cpp
+    ${CMAKE_SOURCE_DIR}/imgui/misc/cpp/imgui_stdlib.cpp
+)
 # Collect project files
 file(GLOB_RECURSE SOURCE_FILES
     ${CMAKE_SOURCE_DIR}/src/*.c
     ${CMAKE_SOURCE_DIR}/src/*.cpp
-    ${CMAKE_SOURCE_DIR}/imgui/*.c
-    ${CMAKE_SOURCE_DIR}/imgui/*.cpp
 )
 
 # Add project executable
-add_executable(${PROJECT_NAME} ${SOURCE_FILES})
+add_executable(${PROJECT_NAME}
+    ${SOURCE_FILES}
+    ${IMGUI_SRC}
+)
 
 # Configure project properties
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)

@@ -7,8 +7,8 @@
 #include <iostream>
 #include <span>
 
-#include "imgui/imgui_impl_opengl3.h"
-#include "imgui/imgui_impl_sdl.h"
+#include "imgui/backends/imgui_impl_opengl3.h"
+#include "imgui/backends/imgui_impl_sdl.h"
 #include "imgui/misc/cpp/imgui_stdlib.h"
 
 
@@ -341,7 +341,7 @@ void MediaLayer::render_ui(chip8& chip) {
 				
 				uint32_t clock = chip.get_clock_rate();
 				ImGui::Text("Max Clock (Hz)");
-				if (ImGui::InputInt("", (int*)&clock)) {
+				if (ImGui::InputInt("##clock", (int*)&clock)) {
 					chip.set_clock_rate(clock);
 				}
 
@@ -423,7 +423,7 @@ void MediaLayer::render_ui(chip8& chip) {
 
         // Draw the display texture
 		ImGui::BeginChild("Image", {x_size + 16.0f, y_size + 16.0f}, true);
-			ImGui::Image((ImTextureID)(intptr_t)texture, ImVec2{x_size, y_size});
+		ImGui::Image((ImTextureID)(intptr_t)texture, ImVec2{x_size, y_size});
 		ImGui::EndChild();
 
 		ImGui::Spacing();
