@@ -166,54 +166,6 @@ auto trim_whitespace(StringT& str) -> void {
 }
 
 
-
-//----------------------------------------------------------------------------------
-// Split
-//----------------------------------------------------------------------------------
-//
-// Split a string at each occurrence of the specified token. Returns a vector
-// of the resultant strings.
-//
-//----------------------------------------------------------------------------------
-
-namespace detail {
-template<typename CharT>
-auto split(std::basic_string_view<CharT> str, std::basic_string_view<CharT> token) -> std::vector<std::basic_string<CharT>> {
-	std::vector<std::basic_string<CharT>> out;
-
-	size_t start = 0;
-	size_t end = str.find(token);
-
-	while (end != std::basic_string_view<CharT>::npos) {
-		out.emplace_back(str.substr(start, end - start));
-		start = end + token.length();
-		end = str.find(token, start);
-	}
-	out.emplace_back(str.substr(start, end));
-
-	return out;
-}
-} //namespace detail
-
-
-inline auto split(std::string_view str, std::string_view token) -> std::vector<std::string> {
-    return detail::split(str, token);
-}
-inline auto split(std::wstring_view str, std::wstring_view token) -> std::vector<std::wstring> {
-    return detail::split(str, token);
-}
-inline auto split(std::u8string_view str, std::u8string_view token) -> std::vector<std::u8string> {
-    return detail::split(str, token);
-}
-inline auto split(std::u16string_view str, std::u16string_view token) -> std::vector<std::u16string> {
-    return detail::split(str, token);
-}
-inline auto split(std::u32string_view str, std::u32string_view token) -> std::vector<std::u32string> {
-    return detail::split(str, token);
-}
-
-
-
 //----------------------------------------------------------------------------------
 // Replace
 //----------------------------------------------------------------------------------
