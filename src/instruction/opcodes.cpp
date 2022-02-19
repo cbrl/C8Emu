@@ -1,53 +1,71 @@
 #include "opcodes.h"
-#include <map>
+#include <unordered_map>
 
 
 auto to_string(Opcodes op) -> std::string {
-    static const std::map<Opcodes, std::string> opcode_map = {
-        {Opcodes::sys_nnn,     "sys nnn"},
-        {Opcodes::cls,         "cls"},
-        {Opcodes::ret,         "ret"},
-        {Opcodes::jmp_nnn,     "jmp nnn"},
-        {Opcodes::call_nnn,    "call nnn"},
-        {Opcodes::se_vx_nn,    "se vx nn"},
-        {Opcodes::sne_vx_nn,   "sne vx nn"},
-        {Opcodes::se_vx_vy,    "se vx vy"},
-        {Opcodes::mov_vx_nn,   "mov vx nn"},
-        {Opcodes::add_vx_nn,   "add vx nn"},
-        {Opcodes::mov_vx_vy,   "mov vx vy"},
-        {Opcodes::or_vx_vy,    "or vx vy"},
-        {Opcodes::and_vx_vy,   "and vx vy"},
-        {Opcodes::xor_vx_vy,   "xor vx vy"},
-        {Opcodes::add_vx_vy,   "add vx vy"},
-        {Opcodes::sub_vx_vy,   "sub vx vy"},
-        {Opcodes::shr_vx,      "shr vx {vy}"},
-        {Opcodes::subn_vx_vy,  "subn vx vy"},
-        {Opcodes::shl_vx,      "shl vx {vy}"},
-        {Opcodes::sne_vx_vy,   "sne vx vy"},
-        {Opcodes::mov_i_nnn,   "mov i nnn"},
-        {Opcodes::jmp_v0_nnn,  "jmp v0 nnn"},
-        {Opcodes::rnd_vx_nn,   "rnd vx nn"},
-        {Opcodes::drw_vx_vy_n, "drw vx vy n"},
-        {Opcodes::skp_vx,      "skp vx"},
-        {Opcodes::sknp_vx,     "sknp vx"},
-        {Opcodes::gdly_vx,     "gdly vx"},
-        {Opcodes::key_vx,      "key vx"},
-        {Opcodes::sdly_vx,     "sdly vx"},
-        {Opcodes::ssnd_vx,     "ssnd vx"},
-        {Opcodes::add_i_vx,    "add i vx"},
-        {Opcodes::font_vx,     "font vx"},
-        {Opcodes::bcd_vx,      "bcd vx"},
-        {Opcodes::str_v0_vx,   "str v0 vx"},
-        {Opcodes::ld_v0_vx,    "ld v0 vx"},
-        {Opcodes::invalid,     "invalid"}
-    };
-
-    return opcode_map.at(op);
+    switch (op) {
+        case Opcodes::sys_nnn:     return "sys nnn";
+        case Opcodes::cls:         return "cls";
+        case Opcodes::ret:         return "ret";
+        case Opcodes::jmp_nnn:     return "jmp nnn";
+        case Opcodes::call_nnn:    return "call nnn";
+        case Opcodes::se_vx_nn:    return "se vx nn";
+        case Opcodes::sne_vx_nn:   return "sne vx nn";
+        case Opcodes::se_vx_vy:    return "se vx vy";
+        case Opcodes::mov_vx_nn:   return "mov vx nn";
+        case Opcodes::add_vx_nn:   return "add vx nn";
+        case Opcodes::mov_vx_vy:   return "mov vx vy";
+        case Opcodes::or_vx_vy:    return "or vx vy";
+        case Opcodes::and_vx_vy:   return "and vx vy";
+        case Opcodes::xor_vx_vy:   return "xor vx vy";
+        case Opcodes::add_vx_vy:   return "add vx vy";
+        case Opcodes::sub_vx_vy:   return "sub vx vy";
+        case Opcodes::shr_vx:      return "shr vx {vy}";
+        case Opcodes::subn_vx_vy:  return "subn vx vy";
+        case Opcodes::shl_vx:      return "shl vx {vy}";
+        case Opcodes::sne_vx_vy:   return "sne vx vy";
+        case Opcodes::mov_i_nnn:   return "mov i nnn";
+        case Opcodes::jmp_v0_nnn:  return "jmp v0 nnn";
+        case Opcodes::rnd_vx_nn:   return "rnd vx nn";
+        case Opcodes::drw_vx_vy_n: return "drw vx vy n";
+        case Opcodes::skp_vx:      return "skp vx";
+        case Opcodes::sknp_vx:     return "sknp vx";
+        case Opcodes::gdly_vx:     return "gdly vx";
+        case Opcodes::key_vx:      return "key vx";
+        case Opcodes::sdly_vx:     return "sdly vx";
+        case Opcodes::ssnd_vx:     return "ssnd vx";
+        case Opcodes::add_i_vx:    return "add i vx";
+        case Opcodes::font_vx:     return "font vx";
+        case Opcodes::bcd_vx:      return "bcd vx";
+        case Opcodes::str_v0_vx:   return "str v0 vx";
+        case Opcodes::ld_v0_vx:    return "ld v0 vx";
+        case Opcodes::invalid:     return "invalid";
+        default:                   return "invalid";
+    }
 }
 
 
 auto to_opcode(std::string_view op) -> Opcodes {
-    static const std::map<std::string, Opcodes, std::less<>> opcode_map = {
+    struct string_hash {
+        using is_transparent = void;
+
+        [[nodiscard]]
+        size_t operator()(const char* txt) const {
+            return std::hash<std::string_view>{}(txt);
+        }
+
+        [[nodiscard]]
+        size_t operator()(std::string_view txt) const {
+            return std::hash<std::string_view>{}(txt);
+        }
+
+        [[nodiscard]]
+        size_t operator()(const std::string& txt) const {
+            return std::hash<std::string>{}(txt);
+        }
+    };
+
+    static const auto opcode_map = std::unordered_map<std::string, Opcodes, string_hash, std::equal_to<>>{
         {"sys nnn",     Opcodes::sys_nnn},
         {"cls",         Opcodes::cls},
         {"ret",         Opcodes::ret},
