@@ -58,8 +58,7 @@ private:
 	// The current text in the nav bar
 	std::string nav_bar_text;
 
-	// The current list of files/folders in the file window. Used for keeping
-	// strings valid until ImGui renders the window.
+	// The current list of files/folders in the file window
 	std::vector<std::pair<std::string, std::filesystem::path>> curr_dir_list;
 	std::vector<std::pair<std::string, std::filesystem::path>> curr_file_list;
 };

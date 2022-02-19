@@ -2,6 +2,7 @@
 #include "chip8/chip8.h"
 #include "instruction/instruction.h"
 
+#include <array>
 #include <iostream>
 #include <span>
 
@@ -250,17 +251,50 @@ void MediaLayer::render_ui(chip8& chip) {
 		const float reg_x = 100;
 		const float reg_y = 350;
 
+
 		ImGui::BeginChild("Registers", {reg_x, reg_y}, true);
 		{
 			ImGui::Text("Registers");
 			ImGui::Separator();
 
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{0, 0});
+
+            // V Registers
 			for (uint8_t i = 0; i <= 0xF; ++i) {
-				ImGui::Text("v%X: 0x%02X", i, chip.v[i]);
+                auto value_str = std::format("0x{:02X}", chip.v[i]);
+                ImGui::PushID(i);
+
+                ImGui::Text("v%X:", i);
+                ImGui::SameLine();
+
+                ImGui::SetNextItemWidth(ImGui::CalcTextSize(value_str.c_str()).x);
+                if (ImGui::InputText("##reg_v", &value_str, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
+                    chip.v[i] = str_to<uint8_t>(value_str, 16).value_or(chip.v[i]);
+                }
+
+                ImGui::PopID();
 			}
 			ImGui::Separator();
-			ImGui::Text(" I: 0x%04X", chip.i);
-			ImGui::Text("PC: 0x%04X", chip.pc);
+
+            // I Register
+            auto reg_i_str = std::format("0x{:04X}", chip.i);
+            ImGui::Text(" I:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(ImGui::CalcTextSize(reg_i_str.c_str()).x);
+            if (ImGui::InputText("##reg_i", &reg_i_str, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
+                chip.i = str_to<uint16_t>(reg_i_str, 16).value_or(chip.i);
+            }
+
+            // Program Counter
+            auto pc_str = std::format("0x{:04X}", chip.pc);
+            ImGui::Text("PC:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(ImGui::CalcTextSize(pc_str.c_str()).x);
+            if (ImGui::InputText("##pc", &pc_str, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
+                chip.pc = str_to<uint16_t>(pc_str, 16).value_or(chip.pc);
+            }
+
+            ImGui::PopStyleVar();
 		}
 		ImGui::EndChild();
 
@@ -284,10 +318,10 @@ void MediaLayer::render_ui(chip8& chip) {
 				ImGui::Separator();
 
 				static constexpr int count = 10;
-				static std::vector<std::string> instructions(count);
+				static auto instructions = std::vector<std::string>(count);
 
 				for (size_t i = 0; i < count; ++i) {
-					const instruction instr = (chip.memory[chip.pc+(2*i)] << 8) | (chip.memory[chip.pc+(2*i)+1]);
+					const auto instr = instruction{chip.memory[chip.pc + (2 * i)], chip.memory[chip.pc + (2 * i) + 1]};
 					instructions[i] = to_string(instr);
 					if (i == 0) ImGui::Text("0x%04X - %s", chip.pc, instructions[0].data());
 					else ImGui::TextDisabled("0x%04X - %s", (uint32_t)(chip.pc+(2*i)), instructions[i].data());
@@ -354,9 +388,24 @@ void MediaLayer::render_ui(chip8& chip) {
 			ImGui::Text("Stack");
 			ImGui::Separator();
 
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{0, 0});
+
+            // Print the editable stack contents
 			for (ptrdiff_t i = chip.stack.size()-1; i >= 0; --i) {
-				ImGui::Text("%02d: 0x%04X", (int)i, chip.stack[i]);
+                auto value_str = std::format("0x{:04X}", chip.stack[i]);
+
+                ImGui::PushID(i);
+                ImGui::Text("%02d:", (int)i);
+                ImGui::SameLine();
+
+                ImGui::SetNextItemWidth(ImGui::CalcTextSize(value_str.c_str()).x);
+                if (ImGui::InputText("##stack", &value_str, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
+                    chip.stack[i] = str_to<uint16_t>(value_str, 16).value_or(chip.stack[i]);
+                }
+                ImGui::PopID();
 			}
+
+            ImGui::PopStyleVar();
 		}
 		ImGui::EndChild();
 	}
@@ -389,16 +438,16 @@ void MediaLayer::render_ui(chip8& chip) {
 			const uint32_t off = chip.display.get_background_color();
 			const uint32_t on  = chip.display.get_foreground_color();
 
-			float off_arr[4] = {};
-            float on_arr[4] = {};
+			auto off_arr = std::array<float, 4>{};
+            auto on_arr  = std::array<float, 4>{};
 
             RGBA2FloatArray(off, off_arr);
             RGBA2FloatArray(on, on_arr);
 
-			if (ImGui::ColorEdit3("Background Color", off_arr)) {
+			if (ImGui::ColorEdit3("Background Color", off_arr.data())) {
                 chip.display.set_background_color(FloatArray2RGBA(off_arr));
 			}
-			if (ImGui::ColorEdit3("Foreground Color", on_arr)) {
+			if (ImGui::ColorEdit3("Foreground Color", on_arr.data())) {
                 chip.display.set_foreground_color(FloatArray2RGBA(on_arr));
 			}
 

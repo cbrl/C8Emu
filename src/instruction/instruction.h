@@ -55,9 +55,9 @@ inline auto to_string(const instruction& instr) -> std::string {
     auto op = to_string(instr.opcode);
     replace(op,   "vx", std::format("v{}", hex.at(instr.x)));
     replace(op,   "vy", std::format("v{}", hex.at(instr.y)));
-    replace(op, " nnn", std::format(" {:#03X}", instr.nnn));
-    replace(op,  " nn", std::format(" {:#02X}", instr.nn));
-    replace(op,   " n", std::format(" {:#01X}", instr.n));
+    replace(op, " nnn", std::format(" 0x{:03X}", instr.nnn));
+    replace(op,  " nn", std::format(" 0x{:02X}", instr.nn));
+    replace(op,   " n", std::format(" 0x{:01X}", instr.n));
 
     return op;
 }

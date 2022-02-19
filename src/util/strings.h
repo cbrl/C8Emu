@@ -11,6 +11,92 @@
 
 
 //----------------------------------------------------------------------------------
+// StrTo
+//----------------------------------------------------------------------------------
+//
+// Convert a string to a specified arithmetic type. For boolean conversion,
+// valid strings are the case-insensitive "true" and "false", or any numeric value.
+//
+// Returns an std::optional<T>, which contains the converted value unless the
+// string was empty or the underlying call to std::from_chars() failed.
+//
+//----------------------------------------------------------------------------------
+
+// Convert a string to the specified integral type
+template<std::integral T> requires !std::same_as<T, bool>
+auto str_to(std::string_view str, int base = 10) noexcept -> std::optional<T> {
+	if (str.empty()) {
+		return std::nullopt;
+	}
+
+	auto out = T{};
+	const auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), out, base);
+
+	if (ptr != (str.data() + str.size())
+	    || ec == std::errc::invalid_argument
+	    || ec == std::errc::result_out_of_range) {
+
+		return std::nullopt;
+	}
+
+	return out;
+}
+
+// Convert a string to the specified floating point type
+template<std::floating_point T>
+auto str_to(std::string_view str, std::chars_format fmt = std::chars_format::general) -> std::optional<T> {
+	if (str.empty()) {
+		return std::nullopt;
+	}
+
+	auto out = T{};
+	const auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), out, fmt);
+
+	if (ptr != (str.data() + str.size())
+	    || ec == std::errc::invalid_argument
+	    || ec == std::errc::result_out_of_range) {
+
+		return std::nullopt;
+	}
+
+	return out;
+}
+
+// Convert a string to a boolean value. Accepts numeric values or the case-insensitive strings "true" and "false".
+template<typename T> requires std::same_as<T, bool>
+auto str_to(std::string_view str) noexcept -> std::optional<T> {
+	if (str.empty()) {
+		return std::nullopt;
+	}
+
+	if (str.size() == 4
+	    && (str[0] == 't' || str[0] == 'T')
+	    && (str[1] == 'r' || str[1] == 'R')
+	    && (str[2] == 'u' || str[2] == 'U')
+	    && (str[3] == 'e' || str[3] == 'E')) {
+
+		return true;
+	}
+	if (str.size() == 5
+	    && (str[0] == 'f' || str[0] == 'F')
+	    && (str[1] == 'a' || str[1] == 'A')
+	    && (str[2] == 'l' || str[2] == 'L')
+	    && (str[3] == 's' || str[3] == 'S')
+	    && (str[4] == 'e' || str[4] == 'E')) {
+
+		return false;
+	}
+
+	const auto val = str_to<size_t>(str);
+	if (val.has_value()) {
+		return static_cast<bool>(val.value());
+	}
+
+	return std::nullopt;
+}
+
+
+//----------------------------------------------------------------------------------
 // Trim
 //----------------------------------------------------------------------------------
 //
