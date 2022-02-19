@@ -1,6 +1,7 @@
 #include "media_layer.h"
 #include "chip8/chip8.h"
 #include "instruction/instruction.h"
+#include "util/strings.h"
 
 #include <array>
 #include <iostream>
@@ -430,7 +431,7 @@ void MediaLayer::render_ui(chip8& chip) {
 		ImGui::Spacing();
 
         // Display settings
-		ImGui::BeginChild("Display Settings", {200, 100});
+		ImGui::BeginChild("Display Settings", {400, 100});
 		{
             static const uint8_t scale_step = 1;
 			ImGui::InputScalar("Scale", ImGuiDataType_U8, &display_scale, &scale_step);
