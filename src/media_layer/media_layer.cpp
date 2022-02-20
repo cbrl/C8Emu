@@ -46,8 +46,8 @@ MediaLayer::MediaLayer() {
         "CHIP-8",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
-        1280,
-        960,
+        1600,
+        1200,
         SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI
     );
 
@@ -120,6 +120,8 @@ MediaLayer::MediaLayer() {
 
 
 MediaLayer::~MediaLayer() {
+    glDeleteTextures(1, &texture);
+
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
@@ -431,6 +433,7 @@ void MediaLayer::render_ui(chip8& chip) {
     //----------------------------------------------------------------------------------
     // Code Editor
     //----------------------------------------------------------------------------------
+    ImGui::SetNextWindowSize({400, 400}, ImGuiCond_Appearing);
     if (ImGui::Begin("Code Editor", nullptr, ImGuiWindowFlags_MenuBar)) {
         if (ImGui::BeginMenuBar()) {
             if (ImGui::MenuItem("Compile")) {

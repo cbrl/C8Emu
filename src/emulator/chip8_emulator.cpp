@@ -3,7 +3,7 @@
 
 auto Chip8Emulator::run() -> void {
     bool stop = false;
-    std::chrono::duration<double> clock_dt{0};
+    auto clock_dt = std::chrono::duration<double>{0};
 
     while (!stop) {
         // Update the timer
@@ -11,7 +11,7 @@ auto Chip8Emulator::run() -> void {
         clock_dt += timer.delta_time();
 
         // If not paused and the elapsed time is greater than the clock period, then update.
-        if (clock_dt.count() >= (1.0 / chip.get_clock_rate()) && !chip.is_paused()) {
+        if (clock_dt.count() >= (1.0 / chip.get_clock_rate()) and !chip.is_paused()) {
             chip.run_cycle();
             clock_dt = std::chrono::duration<double>{0};
         }
