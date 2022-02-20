@@ -1,6 +1,7 @@
 #pragma once
 
 #include <unordered_map>
+#include <limits>
 
 #include <SDL2/SDL.h>
 #include <glad/glad.h>
@@ -69,6 +70,11 @@ private:
     FileSelector file_selector;
     MemoryEditor mem_editor;
     TextEditor text_editor;
+
+    // Instruction Window state
+    int instruction_count = 10;
+    std::vector<std::string> instructions;
+    uint16_t last_pc = std::numeric_limits<uint16_t>::max();
 
     // The mapping from keyboard keys to CHIP-8 keys
     static inline const std::unordered_map<SDL_Scancode, Keys> key_map = {

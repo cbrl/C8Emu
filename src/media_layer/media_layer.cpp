@@ -252,6 +252,9 @@ void MediaLayer::render_ui(chip8& chip) {
     ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
 
+    //----------------------------------------------------------------------------------
+    // Register Window
+    //----------------------------------------------------------------------------------
     if (ImGui::Begin("Registers", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
 		ImGui::Text("Registers");
 		ImGui::Separator();
@@ -297,7 +300,11 @@ void MediaLayer::render_ui(chip8& chip) {
 	}
 	ImGui::End();
 
-    ImGui::SetNextWindowSize({125, 350}, ImGuiCond_Appearing);
+
+    //----------------------------------------------------------------------------------
+    // Stack Window
+    //----------------------------------------------------------------------------------
+    ImGui::SetNextWindowSize({125, 325}, ImGuiCond_Appearing);
     if (ImGui::Begin("Stack", nullptr)) {
 		ImGui::Text("Stack");
 		ImGui::Separator();
@@ -322,6 +329,38 @@ void MediaLayer::render_ui(chip8& chip) {
         ImGui::PopStyleVar();
 	}
 	ImGui::End();
+
+
+    //----------------------------------------------------------------------------------
+    // Instruction Window
+    //----------------------------------------------------------------------------------
+    if (ImGui::Begin("Program", nullptr, ImGuiWindowFlags_NoScrollbar)) {
+		ImGui::Text("Execution");
+		ImGui::Separator();
+
+        bool update_strings = chip.pc != last_pc;
+
+        update_strings |= ImGui::InputInt("Preview Count", &instruction_count);
+        instructions.resize(instruction_count);
+        ImGui::Separator();
+
+        // Update instruction list if PC changed or the user changed the preview count
+        if (update_strings) {
+            last_pc = chip.pc;
+
+            for (size_t i = 0; i < instruction_count; ++i) {
+                const auto instr = instruction{chip.memory[chip.pc + (2 * i)], chip.memory[chip.pc + (2 * i) + 1]};
+                instructions[i] = to_string(instr);
+            }
+        }
+
+        for (size_t i = 0; i < instruction_count; ++i) {
+			if (i == 0) ImGui::Text("0x%04X - %s", chip.pc, instructions[0].data());
+			else ImGui::TextDisabled("0x%04X - %s", static_cast<uint32_t>(chip.pc + (2*i)), instructions[i].data());
+        }
+	}
+	ImGui::End();
+
 
 	//----------------------------------------------------------------------------------
 	// Settings
