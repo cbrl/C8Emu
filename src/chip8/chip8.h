@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <functional>
 #include <span>
+#include <unordered_set>
 #include <vector>
 
 #include "display/display.h"
@@ -66,7 +67,6 @@ public:
     [[nodiscard]]
     auto load_rom(std::span<const uint16_t> rom_data) -> bool;
 
-
     [[nodiscard]]
     auto get_clock_rate() const noexcept -> uint32_t {
         return clock_rate;
@@ -84,6 +84,25 @@ public:
     /// Enable/disable legacy mode, which changes the behavior of certain instructions. Newer ROMS might not expect legacy behavior.
     auto set_legacy_mode(bool state) noexcept -> void {
         legacy_mode = state;
+    }
+
+    /**
+    * @brief Add a breakpoint at the specified instruction number
+    * @param instruction_number  The instruction number to break at. 0 specifies the first instruction in the ROM.
+    */
+    auto add_breakpoint(uint16_t instruction_number) -> void {
+        breakpoints.insert(instruction_number);
+    }
+    auto remove_breakpoint(uint16_t instruction_number) -> void {
+        breakpoints.erase(instruction_number);
+    }
+    auto clear_breakpoints() -> void {
+        breakpoints.clear();
+    }
+
+    [[nodiscard]]
+    auto get_breakpoints() const noexcept -> const std::unordered_set<uint16_t>& {
+        return breakpoints;
     }
 
 private:
@@ -104,6 +123,9 @@ private:
 
     // The clock speed in Hz
     uint32_t clock_rate = 500;
+
+    // Instruction numbers to pause execution at
+    std::unordered_set<uint16_t> breakpoints;
 
 
     //--------------------------------------------------------------------------------

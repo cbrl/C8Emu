@@ -55,7 +55,12 @@ auto chip8::run_cycle() -> void {
 	timer.tick();
 
 	if (pc < rom_end) {  //check that the PC is within the ROM's memory region
-		ISA::execute_cycle(*this);
+		if (breakpoints.contains((pc - rom_start) / 2)) {
+			pause();
+		}
+		else {
+			ISA::execute_cycle(*this);
+		}
 	}
 	else {
 		std::cout << "PC moved past end of ROM\n";

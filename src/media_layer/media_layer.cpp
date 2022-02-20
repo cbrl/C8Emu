@@ -435,6 +435,8 @@ void MediaLayer::render_ui(chip8& chip) {
     //----------------------------------------------------------------------------------
     ImGui::SetNextWindowSize({400, 400}, ImGuiCond_Appearing);
     if (ImGui::Begin("Code Editor", nullptr, ImGuiWindowFlags_MenuBar)) {
+        text_editor.Render("editor");
+
         if (ImGui::BeginMenuBar()) {
             if (ImGui::MenuItem("Compile")) {
                 const auto lines = text_editor.GetTextLines();
@@ -447,10 +449,30 @@ void MediaLayer::render_ui(chip8& chip) {
                 (void)chip.load_rom(result.program_data);
             }
 
+            if (ImGui::BeginMenu("Breakpoint")) {
+                auto update_breakpoints = [&] {
+                    const auto breakpoints = TextEditor::Breakpoints(chip.get_breakpoints().begin(), chip.get_breakpoints().end());
+                    text_editor.SetBreakpoints(breakpoints);
+                };
+
+                if (ImGui::MenuItem("Add")) {
+                    chip.add_breakpoint(text_editor.GetCursorPosition().mLine + 1);
+                    update_breakpoints();
+                }
+                if (ImGui::MenuItem("Remove")) {
+                    chip.remove_breakpoint(text_editor.GetCursorPosition().mLine + 1);
+                    update_breakpoints();
+                }
+                if (ImGui::MenuItem("Clear")) {
+                    chip.clear_breakpoints();
+                    update_breakpoints();
+                }
+
+                ImGui::EndMenu();
+            }
+
             ImGui::EndMenuBar();
         }
-
-        text_editor.Render("editor");
     }
     ImGui::End();
 
