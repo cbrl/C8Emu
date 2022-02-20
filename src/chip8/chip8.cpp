@@ -101,3 +101,32 @@ auto chip8::load_rom(const std::filesystem::path& file) -> bool {
 
 	return true;
 }
+
+
+auto chip8::load_rom(std::span<const uint16_t> rom_data) -> bool {
+	// Ensure the ROM will fit in the memory
+	if (rom_data.size_bytes() > (memory.size() - rom_start)) {
+        std::cout << "The ROM data is too big to fit in the CHIP8 memory\n"
+                  << "  Memory size: " << (memory.size() - rom_start) << '\n'
+                  << "     ROM size: " << rom_data.size_bytes() << '\n';
+
+		return false;
+	}
+
+	// Reset the device before loading the ROM
+	reset();
+
+	// Write the instructions to memory
+	for (size_t i = 0; i < rom_data.size(); ++i) {
+		const auto idx = rom_start + (i * 2);
+		memory[idx]     = static_cast<uint8_t>(rom_data[i] >> 8);
+		memory[idx + 1] = static_cast<uint8_t>(rom_data[i]);
+	}
+
+	current_rom = std::filesystem::path{};
+	rom_end = rom_start + rom_data.size_bytes();
+
+	resume();
+
+	return true;
+}

@@ -4,10 +4,11 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <span>
 #include <vector>
 
-#include "input/input.h"
 #include "display/display.h"
+#include "input/input.h"
 #include "timer/chip_timer.h"
 
 
@@ -50,6 +51,20 @@ public:
      */
     [[nodiscard]]
     auto load_rom(const std::filesystem::path& file) -> bool;
+
+    /**
+     * @brief Load a ROM into memory
+     *
+     * @details Resets the state of the system and loads the ROM.
+     *          If the ROM is too large for the memory, then the
+     *          function will exit early without resetting the system.
+     *
+     * @param[in] instructions  The list of instructions to write into memory
+     * 
+     * @return True if the file loaded without error, otherwise false.
+     */
+    [[nodiscard]]
+    auto load_rom(std::span<const uint16_t> rom_data) -> bool;
 
 
     [[nodiscard]]

@@ -1,9 +1,6 @@
 #pragma once
 
-#include <map>
-
-#include "input/input.h"
-#include "beeper/beeper.h"
+#include <unordered_map>
 
 #include <SDL2/SDL.h>
 #include <glad/glad.h>
@@ -11,6 +8,11 @@
 #include "imgui/imgui.h"
 #include "gui_widgets/imgui_memory_editor.h"
 #include "gui_widgets/file_selector.h"
+#include "gui_widgets/TextEditor.h"
+
+#include "input/input.h"
+#include "beeper/beeper.h"
+
 
 class chip8;
 
@@ -66,9 +68,10 @@ private:
     // GUI widgets
     FileSelector file_selector;
     MemoryEditor mem_editor;
+    TextEditor text_editor;
 
     // The mapping from keyboard keys to CHIP-8 keys
-    static inline const std::map<SDL_Scancode, Keys> key_map = {
+    static inline const std::unordered_map<SDL_Scancode, Keys> key_map = {
         {SDL_SCANCODE_KP_0, Keys::Key0},
         {SDL_SCANCODE_KP_1, Keys::Key1},
         {SDL_SCANCODE_KP_2, Keys::Key2},

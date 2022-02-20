@@ -12,7 +12,6 @@
 #include "imgui/misc/cpp/imgui_stdlib.h"
 
 
-
 static auto RGBA2FloatArray(uint32_t rgba, std::span<float, 4> array) -> void {
     static constexpr float normalize = 1.0f / 255.0f;
     array[0] = static_cast<float>((rgba >> 24) & 0xFF) * normalize;
@@ -251,6 +250,78 @@ void MediaLayer::render_ui(chip8& chip) {
     ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
 
 
+    if (ImGui::Begin("Registers", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+		ImGui::Text("Registers");
+		ImGui::Separator();
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{0, 0});
+
+        // V Registers
+		for (uint8_t i = 0; i <= 0xF; ++i) {
+            auto value_str = std::format("0x{:02X}", chip.v[i]);
+            ImGui::PushID(i);
+
+            ImGui::Text("v%X:", i);
+            ImGui::SameLine();
+
+            ImGui::SetNextItemWidth(ImGui::CalcTextSize(value_str.c_str()).x);
+            if (ImGui::InputText("##reg_v", &value_str, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
+                chip.v[i] = str_to<uint8_t>(value_str, 16).value_or(chip.v[i]);
+            }
+
+            ImGui::PopID();
+		}
+		ImGui::Separator();
+
+        // I Register
+        auto reg_i_str = std::format("0x{:04X}", chip.i);
+        ImGui::Text(" I:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::CalcTextSize(reg_i_str.c_str()).x);
+        if (ImGui::InputText("##reg_i", &reg_i_str, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
+            chip.i = str_to<uint16_t>(reg_i_str, 16).value_or(chip.i);
+        }
+
+        // Program Counter
+        auto pc_str = std::format("0x{:04X}", chip.pc);
+        ImGui::Text("PC:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::CalcTextSize(pc_str.c_str()).x);
+        if (ImGui::InputText("##pc", &pc_str, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
+            chip.pc = str_to<uint16_t>(pc_str, 16).value_or(chip.pc);
+        }
+
+        ImGui::PopStyleVar();
+	}
+	ImGui::End();
+
+    ImGui::SetNextWindowSize({125, 350}, ImGuiCond_Appearing);
+    if (ImGui::Begin("Stack", nullptr)) {
+		ImGui::Text("Stack");
+		ImGui::Separator();
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{0, 0});
+
+        // Print the editable stack contents
+		for (ptrdiff_t i = chip.stack.size()-1; i >= 0; --i) {
+            auto value_str = std::format("0x{:04X}", chip.stack[i]);
+
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::Text("%02d:", (int)i);
+            ImGui::SameLine();
+
+            ImGui::SetNextItemWidth(ImGui::CalcTextSize(value_str.c_str()).x);
+            if (ImGui::InputText("##stack", &value_str, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
+                chip.stack[i] = str_to<uint16_t>(value_str, 16).value_or(chip.stack[i]);
+            }
+            ImGui::PopID();
+		}
+
+        ImGui::PopStyleVar();
+	}
+	ImGui::End();
+
+/*
     //----------------------------------------------------------------------------------
 	// CHIP-8 Status
 	//----------------------------------------------------------------------------------
@@ -421,7 +492,7 @@ void MediaLayer::render_ui(chip8& chip) {
 		ImGui::EndChild();
 	}
 	ImGui::End();
-
+*/
 
 	//----------------------------------------------------------------------------------
 	// CHIP-8 Display
@@ -474,11 +545,45 @@ void MediaLayer::render_ui(chip8& chip) {
 
 
 	//----------------------------------------------------------------------------------
-	// ROM
+	// ROM Selection
 	//----------------------------------------------------------------------------------
 	if (file_selector.update()) {
-		(void)chip.load_rom(file_selector.get_selected_file());
+		if (chip.load_rom(file_selector.get_selected_file())) {
+            // Decompile the ROM and update the text editor
+            const auto program_data = std::span{&chip.memory[chip.rom_start], chip.rom_end - chip.rom_start};
+            const auto result = decompile_program(program_data);
+
+            for (auto idx : result.failures) {
+                std::cout << std::format("Decompilation failure on instruction {} (byte offset: {})", idx, idx * 2) << std::endl;
+            }
+
+            text_editor.SetTextLines(result.program);
+        }
 	}
+
+
+    //----------------------------------------------------------------------------------
+    // Code Editor
+    //----------------------------------------------------------------------------------
+    if (ImGui::Begin("Code Editor", nullptr, ImGuiWindowFlags_MenuBar)) {
+        if (ImGui::BeginMenuBar()) {
+            if (ImGui::MenuItem("Compile")) {
+                const auto lines = text_editor.GetTextLines();
+                const auto result = compile_program(lines);
+
+                for (auto idx : result.failures) {
+                    std::cout << std::format("Compilation failure on line {} (empty instruction written)", idx + 1) << std::endl;
+                }
+
+                (void)chip.load_rom(result.program_data);
+            }
+
+            ImGui::EndMenuBar();
+        }
+
+        text_editor.Render("editor");
+    }
+    ImGui::End();
 
 
 	//----------------------------------------------------------------------------------

@@ -37,8 +37,8 @@ auto to_string(Opcodes op) -> std::string {
         case Opcodes::add_i_vx:    return "add i vx";
         case Opcodes::font_vx:     return "font vx";
         case Opcodes::bcd_vx:      return "bcd vx";
-        case Opcodes::str_v0_vx:   return "str v0 vx";
-        case Opcodes::ld_v0_vx:    return "ld v0 vx";
+        case Opcodes::str_v0_vx:   return "str vx";
+        case Opcodes::ld_v0_vx:    return "ld vx";
         case Opcodes::invalid:     return "invalid";
         default:                   return "invalid";
     }
@@ -99,67 +99,12 @@ auto to_opcode(std::string_view op) -> Opcodes {
         {"add i vx",    Opcodes::add_i_vx},
         {"font vx",     Opcodes::font_vx},
         {"bcd vx",      Opcodes::bcd_vx},
-        {"str v0 vx",   Opcodes::str_v0_vx},
-        {"ld v0 vx",    Opcodes::ld_v0_vx},
+        {"str vx",      Opcodes::str_v0_vx},
+        {"ld vx",       Opcodes::ld_v0_vx},
     };
 
     if (const auto it = opcode_map.find(op); it != opcode_map.end()) {
         return it->second;
     }
     return Opcodes::invalid;
-}
-
-
-auto to_opcode(uint16_t instruction) -> Opcodes {
-    const uint16_t msb = instruction & 0xF000;
-
-    switch (msb) {
-        case 0x0000: {
-            if ((instruction & 0x0F00) == 0) {
-                const uint16_t lsb = instruction & 0x00FF;
-                switch (lsb) {
-                    case 0x00E0:
-                    case 0x00EE:
-                        return static_cast<Opcodes>(msb + lsb);
-                }
-            }
-            return Opcodes::sys_nnn;
-        }
-
-        case 0x8000: {
-            const uint16_t lsb = instruction & 0x000F;
-            if ((lsb <= 0x0007) || (lsb == 0x000E)) {
-                return static_cast<Opcodes>(msb + lsb); 
-            }
-            return Opcodes::invalid;
-        }
-
-        case 0xE000: {
-            const uint16_t lsb = instruction & 0x00FF;
-            if ((lsb == 0x009E) || (lsb == 0x00A1)) {
-                return static_cast<Opcodes>(msb + lsb);
-            }
-            return Opcodes::invalid;
-        }
-
-        case 0xF000: {
-            const uint16_t lsb = instruction & 0x00FF;
-            switch (lsb) {
-                case 0x0007:
-                case 0x000A:
-                case 0x0015:
-                case 0x0018:
-                case 0x001E:
-                case 0x0029:
-                case 0x0033:
-                case 0x0055:
-                case 0x0065:
-                    return static_cast<Opcodes>(msb + lsb); 
-            }
-            return Opcodes::invalid;
-        }
-
-        default:
-            return static_cast<Opcodes>(msb);
-    }
 }
