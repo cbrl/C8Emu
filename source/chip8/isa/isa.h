@@ -11,7 +11,7 @@ namespace c8::isa {
 enum class Effect : uint8_t {
     none,
     drew,    ///< DXYN changed the display
-    waiting, ///< FX0A waits for a key. The PC did not advance.
+    waiting, ///< FX0A waits for a key. The PC did not advance. MachineState::key_wait has the progress.
 };
 
 struct ExecResult {

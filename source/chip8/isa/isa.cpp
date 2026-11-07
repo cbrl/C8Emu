@@ -2,6 +2,8 @@
 
 #include "instruction/opcodes.h"
 
+#include <bit>
+
 namespace c8::isa {
 namespace {
 
@@ -81,10 +83,46 @@ auto draw_sprite(MachineState& s, const Quirks& q, uint8_t x, uint8_t y, uint8_t
     s.v[0xF] = static_cast<uint8_t>(collision);
 }
 
-} // namespace
+
+// FX0A. The PC stays at the instruction until the wait completes. Keys held
+// when the wait starts are ignored until they are released.
+auto wait_for_key(MachineState& s, const Quirks& q, uint8_t x) noexcept -> ExecResult {
+    auto& wait = s.key_wait;
+
+    // Start a new wait, unless this instruction already waits
+    if ((wait.phase == KeyWaitPhase::idle) || (wait.pc != s.pc) || (wait.reg != x)) {
+        wait = {.phase = KeyWaitPhase::wait_press, .reg = x, .pc = s.pc, .ignored = s.keys};
+    }
+
+    // A released key is no longer ignored
+    wait.ignored = static_cast<uint16_t>(wait.ignored & s.keys);
+
+    if (wait.phase == KeyWaitPhase::wait_press) {
+        const auto pressed = static_cast<uint16_t>(s.keys & ~wait.ignored);
+        if (pressed == 0) {
+            return {.effect = Effect::waiting};
+        }
+
+        // The lowest key wins if several keys are pressed at once
+        wait.key = static_cast<uint8_t>(std::countr_zero(pressed));
+
+        if (q.key_wait_release) {
+            wait.phase = KeyWaitPhase::wait_release;
+            return {.effect = Effect::waiting};
+        }
+    }
+    else if (s.key_down(wait.key)) {
+        return {.effect = Effect::waiting};
+    }
+
+    s.v[x] = wait.key;
+    wait = {};
+    advance(s);
+    return {};
+}
 
 
-auto execute(MachineState& s, const Quirks& q, uint16_t opcode) noexcept -> ExecResult {
+auto execute_opcode(MachineState& s, const Quirks& q, uint16_t opcode) noexcept -> ExecResult {
     const auto x   = static_cast<uint8_t>((opcode >> 8) & 0xF);
     const auto y   = static_cast<uint8_t>((opcode >> 4) & 0xF);
     const auto n   = static_cast<uint8_t>(opcode & 0xF);
@@ -250,8 +288,8 @@ auto execute(MachineState& s, const Quirks& q, uint16_t opcode) noexcept -> Exec
             advance(s);
             return {};
 
-        case Opcodes::key_vx: // FX0A: wait for a key. The caller stores the key and advances the PC.
-            return {.effect = Effect::waiting};
+        case Opcodes::key_vx: // FX0A: wait for a key, then VX = key
+            return wait_for_key(s, q, x);
 
         case Opcodes::sdly_vx: // FX15: delay timer = VX
             s.delay_timer = v[x];
@@ -311,6 +349,21 @@ auto execute(MachineState& s, const Quirks& q, uint16_t opcode) noexcept -> Exec
     }
 
     return {.fault = Fault::illegal_instruction};
+}
+
+} // namespace
+
+
+auto execute(MachineState& s, const Quirks& q, uint16_t opcode) noexcept -> ExecResult {
+    const auto result = execute_opcode(s, q, opcode);
+
+    // Another instruction ran, so an FX0A wait is over. This happens when the
+    // user moves the PC or changes the FX0A word during the wait.
+    if ((result.fault == Fault::none) && (s.key_wait.phase != KeyWaitPhase::idle) && (to_opcode(opcode) != Opcodes::key_vx)) {
+        s.key_wait = {};
+    }
+
+    return result;
 }
 
 } // namespace c8::isa

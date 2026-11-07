@@ -41,6 +41,26 @@ struct FaultInfo {
 };
 
 
+/// The phase of an FX0A key wait
+enum class KeyWaitPhase : uint8_t {
+    idle,         ///< No FX0A is in progress
+    wait_press,   ///< FX0A waits for a key press
+    wait_release, ///< FX0A waits for the release of the pressed key (key_wait_release quirk)
+};
+
+
+/// The progress of an FX0A instruction
+struct KeyWait {
+    KeyWaitPhase phase   = KeyWaitPhase::idle;
+    uint8_t      reg     = 0; ///< X of the FX0A instruction
+    uint8_t      key     = 0; ///< The pressed key
+    uint16_t     pc      = 0; ///< The address of the FX0A instruction
+    uint16_t     ignored = 0; ///< Keys held when the wait started. A key is ignored until it is released.
+
+    friend constexpr auto operator==(const KeyWait&, const KeyWait&) -> bool = default;
+};
+
+
 /**
  * @struct MachineState
  *
@@ -82,6 +102,14 @@ struct MachineState {
         return ((keys >> (key & 0xF)) & 1) != 0;
     }
 
+    /// True while the FX0A instruction at the PC waits for a key
+    [[nodiscard]]
+    auto in_key_wait() const noexcept -> bool {
+        return (key_wait.phase != KeyWaitPhase::idle)
+            && (key_wait.pc == pc)
+            && (read_word(pc) == static_cast<uint16_t>(0xF00A | (key_wait.reg << 8)));
+    }
+
     // Memory. The size is a power of two, so an address mask keeps every access in range.
     std::vector<uint8_t> memory = std::vector<uint8_t>(4096);
 
@@ -100,6 +128,7 @@ struct MachineState {
 
     // Key state. Bit n is set while key n is held.
     uint16_t keys = 0;
+    KeyWait key_wait;
 
     // xorshift32 state for CXNN. It must not be 0.
     uint32_t rng = 1;
