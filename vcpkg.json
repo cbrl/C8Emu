@@ -1,0 +1,40 @@
+{
+  "name": "c8emu",
+  "version-semver": "0.1.0",
+  "description": "A CHIP-8 emulator",
+  "homepage": "https://github.com/cbrl/C8Emu",
+  "dependencies": [
+    {
+      "name": "glad",
+      "version>=": "0.1.36"
+    },
+    {
+      "name": "imgui",
+      "version>=": "1.93.0",
+      "features": [
+        "docking-experimental",
+        "opengl3-binding",
+        "sdl3-binding"
+      ]
+    },
+    "imgui-color-text-edit",
+    "imgui-memory-editor",
+    {
+      "name": "sdl3",
+      "version>=": "3.4.18"
+    }
+  ],
+  "default-features": [],
+  "features": {
+    "test": {
+      "description": "Dependencies for testing",
+      "dependencies": [
+        {
+          "name": "catch2",
+          "version>=": "3.16.1"
+        }
+      ]
+    }
+  },
+  "builtin-baseline": "15b12b99a227d51e21c86dffd40385439eac87a0"
+}

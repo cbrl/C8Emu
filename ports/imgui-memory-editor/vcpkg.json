@@ -1,0 +1,10 @@
+{
+  "name": "imgui-memory-editor",
+  "version-date": "2026-08-23",
+  "description": "Mini memory editor for Dear ImGui, from the imgui_club repository.",
+  "homepage": "https://github.com/ocornut/imgui_club",
+  "license": "MIT",
+  "dependencies": [
+    "imgui"
+  ]
+}

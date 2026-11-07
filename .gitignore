@@ -21,13 +21,24 @@
 *.app
 
 # Project files
+**/.DS_Store
+.idea/
 .vscode/
 .vs/
+.clangd
+CMakeLists.txt.user
 CMakeSettings.json
 
-# Build folder
+# Build folders
 build/
 out/
+cmake-build-*/
+prefix/
+vcpkg_installed/
+
+# Local developer files
+CMakeUserPresets.json
+compile_commands.json
 
 # ImGui config
 imgui.ini
