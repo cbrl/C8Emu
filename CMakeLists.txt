@@ -20,11 +20,11 @@ include(cmake/variables.cmake)
 add_library(
     c8emu_lib OBJECT
     source/chip8/chip8.cpp
+    source/chip8/quirks.cpp
     source/chip8/isa/isa.cpp
-    source/input/input.cpp
+    source/frontend/rom_files.cpp
     source/instruction/instruction.cpp
     source/instruction/opcodes.cpp
-    source/timer/chip_timer.cpp
 )
 
 target_include_directories(

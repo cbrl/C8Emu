@@ -1,7 +1,7 @@
 #pragma once
 
 #include <format>
-#include <iostream>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -17,6 +17,7 @@
 struct instruction {
 public:
     constexpr instruction(uint16_t op) {
+        raw    =  op;
         x      = (op & 0x0F00) >> 8;
         y      = (op & 0x00F0) >> 4;
         n      =  op & 0x000F;
@@ -36,8 +37,11 @@ public:
     // Get the packed representation of the instruction
     [[nodiscard]]
     constexpr explicit operator uint16_t() const noexcept {
-        return static_cast<uint16_t>(opcode) | nnn | nn | n | (x << 8) | (y << 4);
+        return raw;
     }
+
+    // The 16-bit instruction word
+    uint16_t raw = 0;
 
     // The opcode without arguments
     Opcodes opcode = Opcodes::invalid;

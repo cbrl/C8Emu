@@ -1,245 +1,113 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 
+namespace c8 {
 
 /**
  * @class Display
- * 
- * @brief Holds a 2D array of values with dimensions SizeX by SizeY
- * 
- * @tparam SizeX  The size of the display in the x dimension
- * @tparam SizeY  The size of the display in the y dimension
+ *
+ * @brief The CHIP-8 frame buffer
+ *
+ * @details Each pixel is a bitmask holding the on/off state for each plane.
+ *          Plain CHIP-8 uses only plane bit 0.
  */
-template<size_t SizeX, size_t SizeY>
 class Display {
 public:
-	Display() {
-		pixels.fill(bg_color);
-	}
+    static constexpr size_t max_width  = 128;
+    static constexpr size_t max_height = 64;
 
-	//--------------------------------------------------------------------------------
-	// Drawing Operations
-	//--------------------------------------------------------------------------------
+    /// A 64x32 display
+    Display() noexcept : Display(64, 32) {
+    }
 
-	/**
-	 * @brief Enable or disable wrapping
-	 * 
-	 * @details Wrapping will cause pixels that are drawn past the extents of
-	 *          the display to wrap around to the other side.
-	 * 
-	 * @param[in] state  The wrapping state to set
-	 */
-	auto set_wrapping(bool state) noexcept -> void {
-		wrapping = state;
-	}
+    explicit Display(size_t width, size_t height) noexcept {
+        resize(width, height);
+    }
 
-	/**
-	 * @brief Get the wrapping state
-	 * @return The wrapping state
-	 */
-	auto get_wrapping() const noexcept -> bool {
-		return wrapping;
-	}
+    /// Change the size of the display and clear it. The size is clamped to [1, max].
+    auto resize(size_t width, size_t height) noexcept -> void {
+        w = std::clamp<size_t>(width, 1, max_width);
+        h = std::clamp<size_t>(height, 1, max_height);
+        clear();
+    }
 
+    [[nodiscard]]
+    auto width() const noexcept -> size_t {
+        return w;
+    }
 
-	/**
-	 * @brief Draw a pixel (set to foreground color) at the specified location
-	 * 
-	 * @param[in] x  The x coordinate of the pixel
-	 * @param[in] y  The y coordinate of the pixel
-	 */
-	auto draw(size_t x, size_t y) -> void {
-		if (wrapping) {
-			x %= SizeX;
-			y %= SizeY;
-		}
+    [[nodiscard]]
+    auto height() const noexcept -> size_t {
+        return h;
+    }
 
-		row(y)[x] = fg_color;
-	}
+    /// The number of pixels (width * height)
+    [[nodiscard]]
+    auto size() const noexcept -> size_t {
+        return w * h;
+    }
 
-	/**
-	 * @brief Erase a pixel (set to background color) at the specified location
-	 * 
-	 * @param[in] x  The x coordinate of the pixel
-	 * @param[in] y  The y coordinate of the pixel
-	 */
-	auto erase(size_t x, size_t y) -> void {
-		if (wrapping) {
-			x %= SizeX;
-			y %= SizeY;
-		}
+    /// Set every pixel to 0
+    auto clear() noexcept -> void {
+        px.fill(0);
+        ++change_count;
+    }
 
-		row(y)[x] = bg_color;
-	}
+    /// Get the plane bits of a pixel. A pixel outside the display is 0.
+    [[nodiscard]]
+    auto pixel(size_t x, size_t y) const noexcept -> uint8_t {
+        return (x < w && y < h) ? px[(y * w) + x] : uint8_t{0};
+    }
 
-	/**
-	 * @brief  Flip the color of the pixels at the specified location
-	 * 
-	 * @param[in] x  The x coordinate of the pixel
-	 * @param[in] y  The y coordinate of the pixel
-	 * 
-	 * @return True if the pixel was flipped from the foreground color to the background color, otherwise false.
-	 */
-	[[nodiscard]]
-	auto flip(size_t x, size_t y) -> bool {
-		if (wrapping) {
-			x %= SizeX;
-			y %= SizeY;
-		}
+    /**
+     * @brief XOR plane bits into a pixel
+     *
+     * @details A pixel outside the display does not change. The caller must
+     *          clip or wrap the coordinates first.
+     *
+     * @return True if a set bit was cleared (a collision), otherwise false.
+     */
+    auto toggle(size_t x, size_t y, uint8_t planes = 1) noexcept -> bool {
+        if (x >= w || y >= h) {
+            return false;
+        }
 
-		if (row(y)[x] == bg_color) {
-			row(y)[x] = fg_color;
-			return false;
-		}
-		else {
-			row(y)[x] = bg_color;
-			return true;
-		}
-	}
+        auto& value = px[(y * w) + x];
+        const bool collision = (value & planes) != 0;
+        value = static_cast<uint8_t>(value ^ planes);
+        ++change_count;
+        return collision;
+    }
 
-	/**
-	 * @brief Clear the entire screen
-	 */
-	auto clear() noexcept -> void {
-		pixels.fill(bg_color);
-	}
+    /// The pixels in row-major order (width * height values)
+    [[nodiscard]]
+    auto pixels() const noexcept -> std::span<const uint8_t> {
+        return std::span{px}.first(size());
+    }
 
+    /// A counter that increases on each change. A renderer can skip uploads when it does not change.
+    [[nodiscard]]
+    auto version() const noexcept -> uint64_t {
+        return change_count;
+    }
 
-	//--------------------------------------------------------------------------------
-	// Background Color
-	//--------------------------------------------------------------------------------
-
-	/**
-	 * @brief  Get the display's background color
-	 * @return The background color of the display
-	 */
-	[[nodiscard]]
-	auto get_background_color() const noexcept -> uint32_t {
-		return bg_color;
-	}
-
-	/**
-	 * @brief  Set the display's background color
-	 * 
-	 * @param[in] new_color  The new background color for the display
-	 */
-	auto set_background_color(uint32_t new_color) noexcept -> void {
-		for (size_t y = 0; y < SizeY; ++y) {
-			for (size_t x = 0; x < SizeX; ++x) {
-				if (row(y)[x] == bg_color) {
-					row(y)[x] = new_color;
-				}
-			}
-		}
-
-		bg_color = new_color;
-	}
-
-
-	//--------------------------------------------------------------------------------
-	// Foreground Color
-	//--------------------------------------------------------------------------------
-
-	/**
-	 * @brief  Get the display's foreground color
-	 * @return The foreground color of the display
-	 */
-	[[nodiscard]]
-	auto get_foreground_color() const noexcept -> uint32_t {
-		return fg_color;
-	}
-
-
-	/**
-	 * @brief  Set the display's foreground color
-	 * 
-	 * @param[in] new_color  The new foreground color for the display
-	 */
-	auto set_foreground_color(uint32_t new_color) noexcept -> void {
-		// Update drawn pixels
-		for (size_t y = 0; y < SizeY; ++y) {
-			for (size_t x = 0; x < SizeX; ++x) {
-				if (row(y)[x] == fg_color) {
-					row(y)[x] = new_color;
-				}
-			}
-		}
-
-		fg_color = new_color;
-	}
-
-
-	//--------------------------------------------------------------------------------
-	// Size
-	//--------------------------------------------------------------------------------
-
-	/**
-	 * @brief  Get the X dimension of the display
-	 * @return The X dimension
-	 */
-	[[nodiscard]]
-	auto size_x() const noexcept -> size_t {
-		return SizeX;
-	}
-
-	/**
-	 * @brief  Get the Y dimension of the display
-	 * @return The Y dimension
-	 */
-	[[nodiscard]]
-	auto size_y() const noexcept -> size_t {
-		return SizeY;
-	}
-
-
-	/**
-	 * @brief  Get the number of pixels in the display
-	 * @return The number of pixels. Equal to sizeX() * sizeY().
-	 */
-	[[nodiscard]]
-	auto size() const noexcept -> size_t {
-		return pixels.size();
-	}
-
-
-	//--------------------------------------------------------------------------------
-	// Data
-	//--------------------------------------------------------------------------------
-
-	/**
-	 * @brief  Get a raw pointer to the pixel array
-	 * @return A pointer to the array of pixels
-	 */
-	[[nodiscard]]
-	auto data() const noexcept -> const uint32_t* {
-		return pixels.data();
-	}
-
-	/**
-	 * @brief  Get a raw pointer to the pixel array
-	 * @return A pointer to the array of pixels
-	 */
-	[[nodiscard]]
-	auto data() noexcept -> uint32_t* {
-		return pixels.data();
-	}
+    /// Compare size and pixels. The version counter is not part of the comparison.
+    friend auto operator==(const Display& lhs, const Display& rhs) noexcept -> bool {
+        return lhs.w == rhs.w
+            && lhs.h == rhs.h
+            && std::ranges::equal(lhs.pixels(), rhs.pixels());
+    }
 
 private:
-
-	auto row(size_t n) -> std::span<uint32_t, SizeX> {
-		return std::span<uint32_t, SizeX>{&pixels[SizeX * n], SizeX};
-	}
-
-	//--------------------------------------------------------------------------------
-	// Member Variables
-	//--------------------------------------------------------------------------------
-	uint32_t bg_color = 0x000000FF;
-	uint32_t fg_color = 0xFFFFFFFF;
-
-	bool wrapping = true;
-
-	std::array<uint32_t, SizeX * SizeY> pixels;
+    size_t w = 64;
+    size_t h = 32;
+    std::array<uint8_t, max_width * max_height> px;
+    uint64_t change_count = 0;
 };
+
+} // namespace c8

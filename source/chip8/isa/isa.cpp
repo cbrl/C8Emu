@@ -1,572 +1,316 @@
 #include "isa.h"
-#include "../chip8.h"
 
-#include <random>
+#include "instruction/opcodes.h"
 
+namespace c8::isa {
+namespace {
 
-auto ISA::execute_cycle(chip8& chip) -> void {
-	const auto instr = instruction{chip.memory[chip.pc], chip.memory[chip.pc+1]};
-    opcode_map.at(instr.opcode)(chip, instr);
+auto next_random(uint32_t& state) noexcept -> uint8_t {
+    // xorshift32. A zero state stays zero, so replace it.
+    if (state == 0) {
+        state = 1;
+    }
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    return static_cast<uint8_t>(state >> 24);
 }
 
 
-auto ISA::increment_pc(chip8& chip) noexcept -> void {
-	chip.pc += 2;
+auto advance(MachineState& s, int count = 2) noexcept -> void {
+    s.pc = static_cast<uint16_t>(s.pc + count);
 }
 
 
-auto ISA::cls(chip8& chip, instruction instr) -> void {
-
-	// 0x00E0 - cls
-	// Clear the display
-
-	chip.display.clear();
-	increment_pc(chip);
+auto skip_if(MachineState& s, bool condition) noexcept -> void {
+    advance(s, condition ? 4 : 2);
 }
 
 
-auto ISA::ret(chip8& chip, instruction instr) -> void {
-
-	// 0x00EE - ret
-	// Return from a subroutine
-
-	// The interpreter sets the program counter to the address at the
-	// top of the stack, then subtracts 1 from the stack pointer.
-
-	chip.pc = chip.stack.back();
-	chip.stack.pop_back();
-	increment_pc(chip);
+auto apply_load_store_quirk(MachineState& s, const Quirks& q, uint8_t x) noexcept -> void {
+    switch (q.load_store) {
+        case LoadStoreQuirk::increment_x_plus_1: s.i = static_cast<uint16_t>(s.i + x + 1); break;
+        case LoadStoreQuirk::increment_x:        s.i = static_cast<uint16_t>(s.i + x);     break;
+        case LoadStoreQuirk::unchanged:          break;
+    }
 }
 
 
-auto ISA::sys_nnn(chip8& chip, instruction instr) -> void {
+auto draw_sprite(MachineState& s, const Quirks& q, uint8_t x, uint8_t y, uint8_t rows) noexcept -> void {
+    auto& display = s.display;
+    const size_t width  = display.width();
+    const size_t height = display.height();
 
-	// 0x0nnn - sys addr
-	// Jump to a machine code routine at nnn
+    // The start position always wraps. Pixels past the edge clip or wrap per the quirk.
+    const size_t x0 = s.v[x] % width;
+    const size_t y0 = s.v[y] % height;
 
-	// This instr is only used on the old computers on which
-	// Chip-8 was originally implemented. It is ignored by modern interpreters.
+    bool collision = false;
 
-	increment_pc(chip);
+    for (uint8_t row = 0; row < rows; ++row) {
+        size_t py = y0 + row;
+        if (py >= height) {
+            if (!q.wrap_sprites) {
+                break;
+            }
+            py %= height;
+        }
+
+        const uint8_t bits = s.read(static_cast<uint32_t>(s.i) + row);
+
+        for (uint8_t col = 0; col < 8; ++col) {
+            if ((bits & (0x80u >> col)) == 0) {
+                continue;
+            }
+
+            size_t px = x0 + col;
+            if (px >= width) {
+                if (!q.wrap_sprites) {
+                    break;
+                }
+                px %= width;
+            }
+
+            if (display.toggle(px, py)) {
+                collision = true;
+            }
+        }
+    }
+
+    // Write VF last, so that VF as a coordinate register reads its old value
+    s.v[0xF] = static_cast<uint8_t>(collision);
 }
 
-auto ISA::jmp_nnn(chip8& chip, instruction instr) -> void {
+} // namespace
 
-	// 0x1nnn - jmp addr
-	// Jump to location nnn
 
-	// The interpreter sets the program counter to nnn.
+auto execute(MachineState& s, const Quirks& q, uint16_t opcode) noexcept -> ExecResult {
+    const auto x   = static_cast<uint8_t>((opcode >> 8) & 0xF);
+    const auto y   = static_cast<uint8_t>((opcode >> 4) & 0xF);
+    const auto n   = static_cast<uint8_t>(opcode & 0xF);
+    const auto nn  = static_cast<uint8_t>(opcode & 0xFF);
+    const auto nnn = static_cast<uint16_t>(opcode & 0xFFF);
 
-	chip.pc = instr.nnn;
+    auto& v = s.v;
+
+    switch (to_opcode(opcode)) {
+        //--------------------------------------------------------------------------------
+        // 0x0---
+        //--------------------------------------------------------------------------------
+        case Opcodes::cls: // 00E0: clear the display
+            s.display.clear();
+            advance(s);
+            return {};
+
+        case Opcodes::ret: // 00EE: return from a subroutine
+            if (s.sp == 0 || s.sp > MachineState::stack_depth) {
+                return {.fault = Fault::stack_underflow};
+            }
+            --s.sp;
+            s.pc = s.stack[s.sp];
+            return {};
+
+        case Opcodes::sys_nnn: // 0NNN: machine code routine. Modern interpreters ignore it.
+            advance(s);
+            return {};
+
+        //--------------------------------------------------------------------------------
+        // Jumps and calls
+        //--------------------------------------------------------------------------------
+        case Opcodes::jmp_nnn: // 1NNN: jump to NNN
+            s.pc = nnn;
+            return {};
+
+        case Opcodes::call_nnn: // 2NNN: call the subroutine at NNN
+            if (s.sp >= MachineState::stack_depth) {
+                return {.fault = Fault::stack_overflow};
+            }
+            s.stack[s.sp] = static_cast<uint16_t>(s.pc + 2);
+            ++s.sp;
+            s.pc = nnn;
+            return {};
+
+        case Opcodes::jmp_v0_nnn: // BNNN: jump to NNN + V0, or XNN + VX with the jump quirk
+            s.pc = static_cast<uint16_t>(nnn + (q.jump_uses_vx ? v[x] : v[0]));
+            return {};
+
+        //--------------------------------------------------------------------------------
+        // Skips
+        //--------------------------------------------------------------------------------
+        case Opcodes::se_vx_nn:  skip_if(s, v[x] == nn);   return {}; // 3XNN
+        case Opcodes::sne_vx_nn: skip_if(s, v[x] != nn);   return {}; // 4XNN
+        case Opcodes::se_vx_vy:  skip_if(s, v[x] == v[y]); return {}; // 5XY0
+        case Opcodes::sne_vx_vy: skip_if(s, v[x] != v[y]); return {}; // 9XY0
+
+        case Opcodes::skp_vx:  skip_if(s, s.key_down(v[x]));  return {}; // EX9E: skip if key VX is held
+        case Opcodes::sknp_vx: skip_if(s, !s.key_down(v[x])); return {}; // EXA1: skip if key VX is not held
+
+        //--------------------------------------------------------------------------------
+        // Loads and arithmetic
+        //--------------------------------------------------------------------------------
+        case Opcodes::mov_vx_nn: // 6XNN: VX = NN
+            v[x] = nn;
+            advance(s);
+            return {};
+
+        case Opcodes::add_vx_nn: // 7XNN: VX += NN, VF does not change
+            v[x] = static_cast<uint8_t>(v[x] + nn);
+            advance(s);
+            return {};
+
+        case Opcodes::mov_vx_vy: // 8XY0: VX = VY
+            v[x] = v[y];
+            advance(s);
+            return {};
+
+        case Opcodes::or_vx_vy: // 8XY1: VX |= VY
+            v[x] = static_cast<uint8_t>(v[x] | v[y]);
+            if (q.vf_reset) {
+                v[0xF] = 0;
+            }
+            advance(s);
+            return {};
+
+        case Opcodes::and_vx_vy: // 8XY2: VX &= VY
+            v[x] = static_cast<uint8_t>(v[x] & v[y]);
+            if (q.vf_reset) {
+                v[0xF] = 0;
+            }
+            advance(s);
+            return {};
+
+        case Opcodes::xor_vx_vy: // 8XY3: VX ^= VY
+            v[x] = static_cast<uint8_t>(v[x] ^ v[y]);
+            if (q.vf_reset) {
+                v[0xF] = 0;
+            }
+            advance(s);
+            return {};
+
+        case Opcodes::add_vx_vy: { // 8XY4: VX += VY, VF = carry
+            const unsigned sum = static_cast<unsigned>(v[x]) + v[y];
+            v[x]   = static_cast<uint8_t>(sum);
+            v[0xF] = static_cast<uint8_t>(sum > 0xFF);
+            advance(s);
+            return {};
+        }
+
+        case Opcodes::sub_vx_vy: { // 8XY5: VX -= VY, VF = NOT borrow
+            const uint8_t a = v[x];
+            const uint8_t b = v[y];
+            v[x]   = static_cast<uint8_t>(a - b);
+            v[0xF] = static_cast<uint8_t>(a >= b);
+            advance(s);
+            return {};
+        }
+
+        case Opcodes::subn_vx_vy: { // 8XY7: VX = VY - VX, VF = NOT borrow
+            const uint8_t a = v[x];
+            const uint8_t b = v[y];
+            v[x]   = static_cast<uint8_t>(b - a);
+            v[0xF] = static_cast<uint8_t>(b >= a);
+            advance(s);
+            return {};
+        }
+
+        case Opcodes::shr_vx: { // 8XY6: VX = VY >> 1 (or VX >> 1), VF = the bit shifted out
+            const uint8_t source = q.shift_uses_vy ? v[y] : v[x];
+            v[x]   = static_cast<uint8_t>(source >> 1);
+            v[0xF] = static_cast<uint8_t>(source & 1);
+            advance(s);
+            return {};
+        }
+
+        case Opcodes::shl_vx: { // 8XYE: VX = VY << 1 (or VX << 1), VF = the bit shifted out
+            const uint8_t source = q.shift_uses_vy ? v[y] : v[x];
+            v[x]   = static_cast<uint8_t>(source << 1);
+            v[0xF] = static_cast<uint8_t>(source >> 7);
+            advance(s);
+            return {};
+        }
+
+        case Opcodes::rnd_vx_nn: // CXNN: VX = random & NN
+            v[x] = static_cast<uint8_t>(next_random(s.rng) & nn);
+            advance(s);
+            return {};
+
+        //--------------------------------------------------------------------------------
+        // Display
+        //--------------------------------------------------------------------------------
+        case Opcodes::drw_vx_vy_n: // DXYN: draw N sprite rows from I at (VX, VY), VF = collision
+            draw_sprite(s, q, x, y, n);
+            advance(s);
+            return {.effect = Effect::drew};
+
+        //--------------------------------------------------------------------------------
+        // Timers and keys
+        //--------------------------------------------------------------------------------
+        case Opcodes::gdly_vx: // FX07: VX = delay timer
+            v[x] = s.delay_timer;
+            advance(s);
+            return {};
+
+        case Opcodes::key_vx: // FX0A: wait for a key. The caller stores the key and advances the PC.
+            return {.effect = Effect::waiting};
+
+        case Opcodes::sdly_vx: // FX15: delay timer = VX
+            s.delay_timer = v[x];
+            advance(s);
+            return {};
+
+        case Opcodes::ssnd_vx: // FX18: sound timer = VX
+            s.sound_timer = v[x];
+            advance(s);
+            return {};
+
+        //--------------------------------------------------------------------------------
+        // Memory and the I register
+        //--------------------------------------------------------------------------------
+        case Opcodes::mov_i_nnn: // ANNN: I = NNN
+            s.i = nnn;
+            advance(s);
+            return {};
+
+        case Opcodes::add_i_vx: // FX1E: I += VX, VF does not change
+            s.i = static_cast<uint16_t>(s.i + v[x]);
+            advance(s);
+            return {};
+
+        case Opcodes::font_vx: // FX29: I = address of the font sprite for the low nibble of VX
+            s.i = static_cast<uint16_t>(MachineState::font_address + ((v[x] & 0xF) * 5));
+            advance(s);
+            return {};
+
+        case Opcodes::bcd_vx: { // FX33: write the decimal digits of VX at I, I+1, I+2
+            const uint8_t value = v[x];
+            s.write(s.i,     static_cast<uint8_t>(value / 100));
+            s.write(s.i + 1u, static_cast<uint8_t>((value / 10) % 10));
+            s.write(s.i + 2u, static_cast<uint8_t>(value % 10));
+            advance(s);
+            return {};
+        }
+
+        case Opcodes::str_v0_vx: // FX55: write V0..VX to memory at I
+            for (uint8_t r = 0; r <= x; ++r) {
+                s.write(static_cast<uint32_t>(s.i) + r, v[r]);
+            }
+            apply_load_store_quirk(s, q, x);
+            advance(s);
+            return {};
+
+        case Opcodes::ld_v0_vx: // FX65: read V0..VX from memory at I
+            for (uint8_t r = 0; r <= x; ++r) {
+                v[r] = s.read(static_cast<uint32_t>(s.i) + r);
+            }
+            apply_load_store_quirk(s, q, x);
+            advance(s);
+            return {};
+
+        case Opcodes::invalid:
+            break;
+    }
+
+    return {.fault = Fault::illegal_instruction};
 }
 
-
-auto ISA::call_nnn(chip8& chip, instruction instr) -> void {
-
-	// 0x2nnn - call addr
-	// Call subroutine at nnn
-
-	// The interpreter increments the stack pointer, then puts the
-	// current pc on the top of the stack. The pc is then set to nnn.
-
-	chip.stack.push_back(chip.pc);
-	chip.pc = instr.nnn;
-}
-
-
-auto ISA::se_vx_nn(chip8& chip, instruction instr) -> void {
-
-	// 0x3xnn - se vx, byte
-	// Skip next instr if vx = nn
-
-	// The interpreter compares register vx to nn, and if they are
-	// equal, increments the program counter by 2.
-
-	if (chip.v[instr.x] == instr.nn) {
-		increment_pc(chip);
-	}
-	increment_pc(chip);
-}
-
-
-auto ISA::sne_vx_nn(chip8& chip, instruction instr) -> void {
-
-	// 0x4xnn - sne vx, byte
-	// Skip next instr if vx != nn
-
-	// The interpreter compares register vx to nn, and if they are
-	// not equal, increments the program counter by 2.
-
-	if (chip.v[instr.x] != instr.nn) {
-		increment_pc(chip);
-	}
-	increment_pc(chip);
-}
-
-
-auto ISA::se_vx_vy(chip8& chip, instruction instr) -> void {
-
-	// 0x5xy0 - se vx, vy
-	// Skip next instr if vx = vy
-
-	// The interpreter compares register vx to register vy, and if they are
-	// equal, increments the program counter by 2.
-
-	if (chip.v[instr.x] == chip.v[instr.y]) {
-		increment_pc(chip);
-	}
-	increment_pc(chip);
-}
-
-
-auto ISA::mov_vx_nn(chip8& chip, instruction instr) -> void {
-
-	// 0x6xnn - mov vx, byte
-	// vx = nn
-
-	// The interpreter puts the value nn into register vx.
-
-	chip.v[instr.x] = instr.nn;
-	increment_pc(chip);
-}
-
-
-auto ISA::add_vx_nn(chip8& chip, instruction instr) -> void {
-
-	// 0x7xnn - add vx, byte
-	// vx = vx + nn
-
-	// Adds the value nn to the value of register vx, then stores the result in vx.
-
-	chip.v[instr.x] += instr.nn;
-	increment_pc(chip);
-}
-
-
-auto ISA::mov_vx_vy(chip8& chip, instruction instr) -> void {
-
-	// 8xy0 - mov vx, vy
-	// vx = vy
-
-	// Stores the value of register vy in register vx.
-
-	chip.v[instr.x] = chip.v[instr.y];
-	increment_pc(chip);
-}
-
-
-auto ISA::or_vx_vy(chip8& chip, instruction instr) -> void {
-
-	// 0x8xy1 - or vx, vy
-	// vx = vx | vy
-
-	// Performs a bitwise OR on the values of vx and vy,
-	// then stores the result in vx.
-
-	chip.v[instr.x] = (chip.v[instr.x] | chip.v[instr.y]);
-	increment_pc(chip);
-}
-
-
-auto ISA::and_vx_vy(chip8& chip, instruction instr) -> void {
-
-	// 0x8xy2 - and vx, vy
-	// vx = vx & vy
-
-	// Performs a bitwise AND on the values of vx and vy,
-	// then stores the result in vx.
-
-	chip.v[instr.x] = (chip.v[instr.x] & chip.v[instr.y]);
-	increment_pc(chip);
-}
-
-
-auto ISA::xor_vx_vy(chip8& chip, instruction instr) -> void {
-
-	// 0x8xy3 - xor vx, vy
-	// vx = vx ^ vy
-
-	// Performs a bitwise exclusive OR on the values of
-	// vx and vy, then stores the result in vx.
-
-	chip.v[instr.x] = (chip.v[instr.x] ^ chip.v[instr.y]);
-	increment_pc(chip);
-}
-
-
-auto ISA::add_vx_vy(chip8& chip, instruction instr) -> void {
-
-	// 0x8xy4 - add vx, vy
-	// vx = vx + vy
-	// vf = carry
-
-	// The values of vx and vy are added together and the result
-	// is stored in vx. If the result overflows, vf is set to 1,
-	// otherwise 0.
-
-	const uint8_t result = chip.v[instr.x] + chip.v[instr.y];
-
-	chip.v[instr.x] = result;
-	chip.v[0xF] = (result < chip.v[instr.x]); //overflow if (a + b) < a
-
-	increment_pc(chip);
-}
-
-
-auto ISA::sub_vx_vy(chip8& chip, instruction instr) -> void {
-
-	// 0x8xy5 - sub vx, vy
-	// vx = vx - vy
-	// vf = NOT borrow
-
-	// If vx > vy, then vf is set to 1, otherwise 0. Then vy is
-	// subtracted from vx, and the results stored in vx.
-
-	chip.v[0xF]     = (chip.v[instr.x] > chip.v[instr.y]) ? 1 : 0;
-	chip.v[instr.x] = chip.v[instr.x] - chip.v[instr.y];
-
-	increment_pc(chip);
-}
-
-
-auto ISA::shr_vx(chip8& chip, instruction instr) -> void {
-
-	// 0x8xy6 - shr vx {, vy}
-	// vx = vy >> 1
-	// vf = LSB(vy)
-
-	// NON-LEGACY MODE: vf is set to the value of the least significant bit of vx.
-	// Then, vx is set to the value of itself shifted right by 1. 
-	//
-	// LEGACY MODE: vf is set to the value of the least significant bit of vy.
-	// Then vx is set to the value of vy shifted right by 1.
-
-	if (chip.is_legacy_mode()) {
-		chip.v[0xF]     = chip.v[instr.y] &  1;
-		chip.v[instr.x] = chip.v[instr.y] >> 1;
-	}
-	else {
-		chip.v[0xF]     = chip.v[instr.x] &  1;
-		chip.v[instr.x] = chip.v[instr.x] >> 1;
-	}
-
-	increment_pc(chip);
-}
-
-
-auto ISA::subn_vx_vy(chip8& chip, instruction instr) -> void {
-
-	// 0x8xy7 - subn vx, vy
-	// vx = vy - vx
-	// vf = NOT borrow
-
-	// If vy > vx, then vf is set to 1, otherwise 0. Then vx is
-	// subtracted from vy, and the results stored in vx.
-
-	chip.v[0xF]     = (chip.v[instr.y] > chip.v[instr.x]) ? 1 : 0;
-	chip.v[instr.x] = chip.v[instr.y] - chip.v[instr.x];
-
-	increment_pc(chip);
-}
-
-
-auto ISA::shl_vx(chip8& chip, instruction instr) -> void {
-
-	// 0x8xyE - shl vx {, vy}
-	// vx = vy << 1
-	// vf = MSB(vy)
-
-	// NON-LEGACY MODE: vf is set to the value of the most significant bit of vx.
-	// Then, vx is set to the value of itself shifted left by 1. 
-	//
-	// LEGACY MODE: vf is set to the value of the most significant bit of vy.
-	// Then vx is set to the value of vy shifted left by 1.
-
-	using reg_t = std::decay_t<decltype(chip.v[0])>;
-
-	if (chip.is_legacy_mode()) {
-		chip.v[0xF]     = chip.v[instr.y] >> ((sizeof(reg_t) * 8) - 1);
-		chip.v[instr.x] = chip.v[instr.y] << 1;
-	}
-	else {
-		chip.v[0xF]     = chip.v[instr.x] >> ((sizeof(reg_t) * 8) - 1);
-		chip.v[instr.x] = chip.v[instr.x] << 1;
-	}
-
-	increment_pc(chip);
-}
-
-
-auto ISA::sne_vx_vy(chip8& chip, instruction instr) -> void {
-
-	// 0x9xy0 - sne vx, vy
-	// Skip next instr if vx != vy
-
-	// The values of vx and vy are compared, and if they are not equal,
-	// the program counter is increased by 2.
-
-	if (chip.v[instr.x] != (chip.v[instr.y])) {
-		increment_pc(chip);
-	}
-
-	increment_pc(chip);
-}
-
-
-auto ISA::mov_i_nnn(chip8& chip, instruction instr) -> void {
-
-	// 0xAnnn - mov i, addr
-	// i = nnn
-
-	// The value of register i is set to nnn.
-
-	chip.i = instr.nnn;
-	increment_pc(chip);
-}
-
-
-auto ISA::jmp_v0_nnn(chip8& chip, instruction instr) -> void {
-
-	// 0xBnnn - jmp v0, addr
-	// Jump to location nnn + V0
-
-	// The program counter is set to nnn plus the value of V0.
-
-	chip.pc = instr.nnn + chip.v[0];
-}
-
-
-auto ISA::rnd_vx_nn(chip8& chip, instruction instr) -> void {
-
-	// 0xCxnn - rnd vx, byte
-	// vx = random byte AND nn
-
-	// The interpreter generates a random number from 0 to 255, which
-	// is then ANDed with the value nn. The results are stored in vx.
-
-	static std::random_device rd;
-	static std::mt19937 gen(rd());
-	static std::uniform_int_distribution dist(0, 255);
-
-	chip.v[instr.x] = dist(gen) & instr.nn;
-	increment_pc(chip);
-}
-
-
-auto ISA::drw_vx_vy_n(chip8& chip, instruction instr) -> void {
-
-	// 0xDxyn - drw vx, vy, n
-	// Display n-byte sprite starting at memory location i at (vx, vy), set vf = collision.
-
-	// The interpreter reads n bytes from memory, starting at the address stored in i.
-	// These bytes are then displayed as sprites on screen at coordinates (vx, vy).
-	// Sprites are XORed onto the existing screen. If this causes any pixels to be erased,
-	// vf is set to 1, otherwise it is set to 0. If the sprite is positioned so part of it is
-	// outside the coordinates of the display, it wraps around to the opposite side of the screen.
-
-	bool erased = false;
-	const uint8_t vx = chip.v[instr.x];
-	const uint8_t vy = chip.v[instr.y];
-
-	for (uint8_t y = 0; y < instr.n; ++y) {
-		const uint8_t byte = chip.memory[chip.i + y];
-
-		// Test each bit of the byte. Flip the appropriate pixel if it's 1 (AKA: xor operation)
-		for (uint8_t x = 0; x < 8; ++x) {
-			if ((byte & (1 << x)) != 0) {
-				erased |= chip.display.flip(vx + (7-x), vy + y);
-			}
-		}
-	}
-
-	chip.v[0xF] = erased;
-
-	increment_pc(chip);
-}
-
-
-auto ISA::skp_vx(chip8& chip, instruction instr) -> void {
-
-	// 0xEx9E - skp vx
-	// Skip next instr if key with the value of vx is pressed
-
-	// Checks the keyboard, and if the key corresponding to the value
-	// of vx is currently in the down position, pc is increased by 2.
-
-	const auto key = static_cast<Keys>(chip.v[instr.x]);
-
-	if (chip.input.is_key_pressed(key)){
-		increment_pc(chip);
-	}
-	increment_pc(chip);
-}
-
-
-auto ISA::sknp_vx(chip8& chip, instruction instr) -> void {
-
-	// 0xExA1 - sknp vx
-	// Skip next instr if key with the value of vx is not pressed
-
-	// Checks the keyboard, and if the key corresponding to the value
-	// of vx is currently in the up position, pc is increased by 2.
-
-	const auto key = static_cast<Keys>(chip.v[instr.x]);
-
-	if (!chip.input.is_key_pressed(key)) {
-		increment_pc(chip);
-	}
-	increment_pc(chip);
-}
-
-
-auto ISA::gdly_vx(chip8& chip, instruction instr) -> void {
-
-	// 0xFx07 - gdly vx
-	// vx = delay timer value
-
-	// The value of DT is placed into vx.
-
-	chip.v[instr.x] = chip.timer.get_delay();
-	increment_pc(chip);
-}
-
-
-auto ISA::key_vx(chip8& chip, instruction instr) -> void {
-
-	// 0xFx0A - key vx
-	// Wait for a key press, store the value of the key in vx
-
-	// All execution stops until a key is pressed, then the value
-	// of that key is stored in vx.
-
-	chip.pause();
-
-	auto func = [&](Keys key) {
-		chip.v[instr.x] = static_cast<uint8_t>(key);
-		chip.resume();
-		increment_pc(chip);
-	};
-
-	chip.input.register_keypress_event(func);
-}
-
-
-auto ISA::sdly_vx(chip8& chip, instruction instr) -> void {
-
-	// 0xFx15 - sdly vx
-	// delay timer = vx
-
-	// DT is set to the value of vx.
-
-	chip.timer.set_delay(chip.v[instr.x]);
-	increment_pc(chip);
-}
-
-
-auto ISA::ssnd_vx(chip8& chip, instruction instr) -> void {
-
-	// 0xFx18 - ssnd vx
-	// sound timer = vx
-
-	// ST is set to the value of vx.
-
-	chip.timer.set_sound(chip.v[instr.x]);
-	increment_pc(chip);
-}
-
-
-auto ISA::add_i_vx(chip8& chip, instruction instr) -> void {
-
-	// 0xFx1E - add i, vx
-	// i = i + vx
-	// vf = overflow
-
-	// The values of i and vx are added, and the results are stored in i.
-	// vf is set to 1 when there is a range overflow (i+vx > 0xFFF),
-	// and to 0 when there isn't.
-
-	const uint16_t sum = chip.i + chip.v[instr.x];
-
-	chip.v[0xF] = (sum < chip.i) ? 1 : 0;    //overflow if (a + b) < a
-	chip.i      = chip.v[instr.x] + chip.i;
-
-	increment_pc(chip);
-}
-
-
-auto ISA::font_vx(chip8& chip, instruction instr) -> void {
-
-	// Fx29 - font vx
-	// i = location of sprite for digit vx
-
-	// The value of i is set to the location for the hexadecimal sprite
-	// of the character corresponding to the value of vx.
-
-	// it's VX * 5 because every font is 5 bytes long.
-	chip.i = chip.v[instr.x] * 5;
-
-	increment_pc(chip);
-}
-
-
-auto ISA::bcd_vx(chip8& chip, instruction instr) -> void {
-
-	// Fx33 - bcd vx
-	// Store BCD representation of vx in memory locations i, i+1, and i+2
-
-	// The interpreter takes the decimal value of vx, and places the
-	// hundreds digit in memory at location in i, the tens digit at
-	// location i+1, and the ones digit at location i+2.
-
-	const uint8_t val = chip.v[instr.x];
-
-	chip.memory[chip.i]     = val / 100;
-	chip.memory[chip.i + 1] = (val / 10) % 10;
-	chip.memory[chip.i + 2] = val % 10;
-
-	increment_pc(chip);
-}
-
-
-auto ISA::str_v0_vx(chip8& chip, instruction instr) -> void {
-
-	// 0xFx55 - str v0, vx
-	// Store registers v0 through vx in memory starting at location i
-
-	// The interpreter copies the values of registers v0 through vx
-	// into memory, starting at the address in i.
-	//
-	// LEGACY MODE: i is set to i + x + 1 after this operation.
-
-	for (uint8_t i = 0; i <= instr.x; ++i) {
-		chip.memory[chip.i + i] = chip.v[i];
-	}
-
-	if (chip.is_legacy_mode()) {
-		chip.i = chip.i + instr.x + 1;
-	}
-
-	increment_pc(chip);
-}
-
-
-auto ISA::ld_v0_vx(chip8& chip, instruction instr) -> void {
-
-	// 0xFx65 - ld_v0_vx
-	// Read registers v0 through vx from memory starting at location i
-
-	// The interpreter reads values from memory starting at location i
-	// into registers V0 through vx.
-	//
-	// LEGACY MODE: i is set to i + x + 1 after this operation.
-
-	for (uint8_t i = 0; i <= instr.x; ++i) {
-		chip.v[i] = chip.memory[chip.i + i];
-	}
-
-	if (chip.is_legacy_mode()) {
-		chip.i = chip.i + instr.x + 1;
-	}
-
-	increment_pc(chip);
-}
+} // namespace c8::isa

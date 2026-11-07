@@ -1,11 +1,15 @@
 #include "media_layer.h"
 #include "chip8/chip8.h"
+#include "frontend/rom_files.h"
 #include "instruction/instruction.h"
 #include "util/strings.h"
 
+#include <algorithm>
 #include <array>
+#include <format>
 #include <iostream>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -55,16 +59,13 @@ MediaLayer::MediaLayer() {
         const std::string error = SDL_GetError();
         std::cout << "SDL_CreateWindow Error: " << error << '\n';
 
-        SDL_DestroyWindow(window);
         SDL_Quit();
 
         throw std::runtime_error(error);
     }
 
-    // Initialize beeper
-    if (!beeper.init_audio()) {
-        //...
-    }
+    // Initialize beeper. The emulator still runs without audio.
+    (void)beeper.init_audio();
 
 
     //--------------------------------------------------------------------------------
@@ -115,7 +116,7 @@ MediaLayer::MediaLayer() {
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     ImGui::GetIO().ConfigDockingWithShift = false;
 
-	ImGui::StyleColorsDark();
+    ImGui::StyleColorsDark();
 
     // The previous editor used HLSL syntax highlighting by default
     text_editor.SetLanguage(TextEditor::Language::Hlsl());
@@ -144,12 +145,12 @@ MediaLayer::~MediaLayer() {
 }
 
 
-void MediaLayer::set_display_scale(uint8_t scale) {
-    display_scale = scale;
+void MediaLayer::set_display_scale(uint32_t scale) {
+    display_scale = std::clamp<uint32_t>(scale, 1, 32);
 }
 
 
-void MediaLayer::process_events(chip8& chip, bool& quit) {
+void MediaLayer::process_events(c8::Chip8& chip, bool& quit) {
     SDL_Event event;
 
     while (SDL_PollEvent(&event)) {
@@ -161,28 +162,21 @@ void MediaLayer::process_events(chip8& chip, bool& quit) {
             }
             break;
 
-            case SDL_EVENT_KEY_DOWN: {
-                const auto it = key_map.find(event.key.scancode);
-                if (it != key_map.end()) {
-                    chip.input.set_key_state(it->second, true);
-                }
-            }
-            break;
-
+            case SDL_EVENT_KEY_DOWN:
             case SDL_EVENT_KEY_UP: {
                 const auto it = key_map.find(event.key.scancode);
                 if (it != key_map.end()) {
-                    chip.input.set_key_state(it->second, false);
+                    chip.set_key(it->second, event.type == SDL_EVENT_KEY_DOWN);
                 }
             }
             break;
 
-            default: break;            
+            default: break;
         }
     }
 
     // Process sound output
-    if (chip.timer.is_sound()) {
+    if (chip.sound_active()) {
         beeper.start_beep();
     }
     else {
@@ -191,7 +185,7 @@ void MediaLayer::process_events(chip8& chip, bool& quit) {
 }
 
 
-void MediaLayer::render(chip8& chip) {
+void MediaLayer::render(c8::Chip8& chip) {
     begin_frame();
     render_ui(chip);
     end_frame();
@@ -209,7 +203,7 @@ void MediaLayer::end_frame() {
     ImGui::Render();
 
     const ImGuiIO& io = ImGui::GetIO();
-    glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
+    glViewport(0, 0, static_cast<int>(io.DisplaySize.x), static_cast<int>(io.DisplaySize.y));
 
     glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -219,35 +213,84 @@ void MediaLayer::end_frame() {
 }
 
 
-void MediaLayer::render_ui(chip8& chip) {
+void MediaLayer::update_display_texture(const c8::Chip8& chip) {
+    const auto& display = chip.state().display;
+    const auto pixels = display.pixels();
 
-    // Update the CHIP-8 display texture
+    // The display holds pixel bits. The colors belong to the frontend.
+    texture_pixels.resize(pixels.size() * 4);
+    for (size_t idx = 0; idx < pixels.size(); ++idx) {
+        const uint32_t color = (pixels[idx] != 0) ? foreground_color : background_color;
+        texture_pixels[(idx * 4) + 0] = static_cast<uint8_t>(color >> 24);
+        texture_pixels[(idx * 4) + 1] = static_cast<uint8_t>(color >> 16);
+        texture_pixels[(idx * 4) + 2] = static_cast<uint8_t>(color >> 8);
+        texture_pixels[(idx * 4) + 3] = static_cast<uint8_t>(color);
+    }
+
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexImage2D(
         GL_TEXTURE_2D,
         0,
         GL_RGBA,
-        64, 32,
-        false,
+        static_cast<GLsizei>(display.width()),
+        static_cast<GLsizei>(display.height()),
+        0,
         GL_RGBA,
-        GL_UNSIGNED_INT_8_8_8_8,
-        chip.display.data()
+        GL_UNSIGNED_BYTE,
+        texture_pixels.data()
     );
+}
 
-    // ImGui::ShowDemoWindow();
+
+void MediaLayer::load_rom_file(c8::Chip8& chip, const std::filesystem::path& file) {
+    const auto loaded = c8::read_rom_file(file, chip.max_program_size())
+        .and_then([&chip](const std::vector<uint8_t>& data) { return chip.load_program(data); });
+
+    if (!loaded) {
+        std::cout << "Error loading ROM: " << loaded.error() << '\n';
+        return;
+    }
+
+    // Decompile the ROM and update the text editor
+    const auto result = decompile_program(chip.program());
+
+    for (auto idx : result.failures) {
+        std::cout << std::format("Decompilation failure on instruction {} (byte offset: {})", idx, idx * 2) << std::endl;
+    }
+
+    // SetText removes all markers, so show the breakpoints again
+    text_editor.SetText(std::vector<std::string_view>(result.program.begin(), result.program.end()));
+    update_breakpoint_markers(chip);
+}
+
+
+void MediaLayer::render_ui(c8::Chip8& chip) {
+    auto& state = chip.state();
+
+    // Update the CHIP-8 display texture
+    update_display_texture(chip);
+
 
     //----------------------------------------------------------------------------------
-	// Menu Bar
-	//----------------------------------------------------------------------------------
-	if (ImGui::BeginMainMenuBar()) {
-		if (ImGui::MenuItem("Open ROM")) {
-			file_selector.open_selector();
-		}
+    // Menu Bar
+    //----------------------------------------------------------------------------------
+    if (ImGui::BeginMainMenuBar()) {
+        if (ImGui::MenuItem("Open ROM")) {
+            file_selector.open_selector();
+        }
 
         if (ImGui::BeginMenu("Options")) {
-            bool legacy = chip.is_legacy_mode();
-            if (ImGui::Checkbox("Legacy Mode", &legacy)) {
-                chip.set_legacy_mode(legacy);
+            if (ImGui::BeginMenu("Quirk Preset")) {
+                const auto* current = c8::find_preset(chip.quirks());
+
+                for (const auto& preset : c8::presets) {
+                    const auto name = std::string{preset.name};
+                    if (ImGui::MenuItem(name.c_str(), nullptr, current == &preset)) {
+                        chip.set_quirks(preset.quirks);
+                    }
+                }
+
+                ImGui::EndMenu();
             }
 
             ImGui::EndMenu();
@@ -260,8 +303,9 @@ void MediaLayer::render_ui(chip8& chip) {
 
             ImGui::EndMenu();
         }
-	}
-	ImGui::EndMainMenuBar();
+
+        ImGui::EndMainMenuBar();
+    }
 
 
     //----------------------------------------------------------------------------------
@@ -285,14 +329,14 @@ void MediaLayer::render_ui(chip8& chip) {
     // Register Window
     //----------------------------------------------------------------------------------
     if (ImGui::Begin("Registers", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-		ImGui::Text("Registers");
-		ImGui::Separator();
+        ImGui::Text("Registers");
+        ImGui::Separator();
 
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{0, 0});
 
         // V Registers
-		for (uint8_t i = 0; i <= 0xF; ++i) {
-            auto value_str = std::format("0x{:02X}", chip.v[i]);
+        for (uint8_t i = 0; i <= 0xF; ++i) {
+            auto value_str = std::format("0x{:02X}", state.v[i]);
             ImGui::PushID(i);
 
             ImGui::Text("v%X:", i);
@@ -300,34 +344,34 @@ void MediaLayer::render_ui(chip8& chip) {
 
             ImGui::SetNextItemWidth(ImGui::CalcTextSize(value_str.c_str()).x);
             if (ImGui::InputText("##reg_v", &value_str, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
-                chip.v[i] = str_to<uint8_t>(value_str, 16).value_or(chip.v[i]);
+                state.v[i] = str_to<uint8_t>(value_str, 16).value_or(state.v[i]);
             }
 
             ImGui::PopID();
-		}
-		ImGui::Separator();
+        }
+        ImGui::Separator();
 
         // I Register
-        auto reg_i_str = std::format("0x{:04X}", chip.i);
+        auto reg_i_str = std::format("0x{:04X}", state.i);
         ImGui::Text(" I:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(ImGui::CalcTextSize(reg_i_str.c_str()).x);
         if (ImGui::InputText("##reg_i", &reg_i_str, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
-            chip.i = str_to<uint16_t>(reg_i_str, 16).value_or(chip.i);
+            state.i = str_to<uint16_t>(reg_i_str, 16).value_or(state.i);
         }
 
         // Program Counter
-        auto pc_str = std::format("0x{:04X}", chip.pc);
+        auto pc_str = std::format("0x{:04X}", state.pc);
         ImGui::Text("PC:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(ImGui::CalcTextSize(pc_str.c_str()).x);
         if (ImGui::InputText("##pc", &pc_str, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
-            chip.pc = str_to<uint16_t>(pc_str, 16).value_or(chip.pc);
+            state.pc = str_to<uint16_t>(pc_str, 16).value_or(state.pc);
         }
 
         ImGui::PopStyleVar();
-	}
-	ImGui::End();
+    }
+    ImGui::End();
 
 
     //----------------------------------------------------------------------------------
@@ -335,87 +379,95 @@ void MediaLayer::render_ui(chip8& chip) {
     //----------------------------------------------------------------------------------
     ImGui::SetNextWindowSize({125, 325}, ImGuiCond_Appearing);
     if (ImGui::Begin("Stack", nullptr)) {
-		ImGui::Text("Stack");
-		ImGui::Separator();
+        ImGui::Text("Stack");
+        ImGui::Separator();
 
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{0, 0});
 
-        // Print the editable stack contents
-		for (ptrdiff_t i = chip.stack.size()-1; i >= 0; --i) {
-            auto value_str = std::format("0x{:04X}", chip.stack[i]);
+        // Print the editable return addresses, newest first
+        const int depth = std::min<int>(state.sp, c8::MachineState::stack_depth);
+        for (int i = depth - 1; i >= 0; --i) {
+            auto& entry = state.stack[static_cast<size_t>(i)];
+            auto value_str = std::format("0x{:04X}", entry);
 
-            ImGui::PushID(static_cast<int>(i));
-            ImGui::Text("%02d:", (int)i);
+            ImGui::PushID(i);
+            ImGui::Text("%02d:", i);
             ImGui::SameLine();
 
             ImGui::SetNextItemWidth(ImGui::CalcTextSize(value_str.c_str()).x);
             if (ImGui::InputText("##stack", &value_str, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
-                chip.stack[i] = str_to<uint16_t>(value_str, 16).value_or(chip.stack[i]);
+                entry = str_to<uint16_t>(value_str, 16).value_or(entry);
             }
             ImGui::PopID();
-		}
+        }
 
         ImGui::PopStyleVar();
-	}
-	ImGui::End();
+    }
+    ImGui::End();
 
 
     //----------------------------------------------------------------------------------
     // Instruction Window
     //----------------------------------------------------------------------------------
     if (ImGui::Begin("Program", nullptr, ImGuiWindowFlags_NoScrollbar)) {
-		ImGui::Text("Execution");
-		ImGui::Separator();
-
-        bool update_strings = chip.pc != last_pc;
-
-        update_strings |= ImGui::InputInt("Preview Count", &instruction_count);
-        instructions.resize(instruction_count);
+        ImGui::Text("Execution");
         ImGui::Separator();
 
-        // Update instruction list if PC changed or the user changed the preview count
-        if (update_strings) {
-            last_pc = chip.pc;
+        ImGui::InputInt("Preview Count", &instruction_count);
+        instruction_count = std::clamp(instruction_count, 1, 64);
+        ImGui::Separator();
 
-            for (size_t i = 0; i < instruction_count; ++i) {
-                const auto instr = instruction{chip.memory[chip.pc + (2 * i)], chip.memory[chip.pc + (2 * i) + 1]};
-                instructions[i] = to_string(instr);
+        // Decode the instructions from the PC forward. Addresses wrap at the end of memory.
+        const auto count = static_cast<size_t>(instruction_count);
+        instructions.resize(count);
+
+        for (size_t i = 0; i < count; ++i) {
+            const auto address = static_cast<uint16_t>((state.pc + (2 * i)) & state.mask());
+            instructions[i] = to_string(instruction{state.read_word(address)});
+
+            if (i == 0) {
+                ImGui::Text("0x%04X - %s", address, instructions[i].c_str());
+            }
+            else {
+                ImGui::TextDisabled("0x%04X - %s", address, instructions[i].c_str());
             }
         }
-
-        for (size_t i = 0; i < instruction_count; ++i) {
-			if (i == 0) ImGui::Text("0x%04X - %s", chip.pc, instructions[0].data());
-			else ImGui::TextDisabled("0x%04X - %s", static_cast<uint32_t>(chip.pc + (2*i)), instructions[i].data());
-        }
-	}
-	ImGui::End();
+    }
+    ImGui::End();
 
 
-	//----------------------------------------------------------------------------------
-	// Settings
-	//----------------------------------------------------------------------------------
-	if (ImGui::Begin("Chip8 Settings")) {
-		ImGui::Text("Settings");
-		ImGui::Separator();
-		ImGui::Spacing();
+    //----------------------------------------------------------------------------------
+    // Settings
+    //----------------------------------------------------------------------------------
+    if (ImGui::Begin("Chip8 Settings")) {
+        ImGui::Text("Settings");
+        ImGui::Separator();
+        ImGui::Spacing();
 
         // CHIP settings
-		uint32_t clock = chip.get_clock_rate();
-		ImGui::Text("Max Clock (Hz)");
-		if (ImGui::InputInt("##clock", (int*)&clock)) {
-			chip.set_clock_rate(clock);
-		}
+        int clock = static_cast<int>(chip.get_clock_rate());
+        ImGui::Text("Max Clock (Hz)");
+        if (ImGui::InputInt("##clock", &clock, 10, 100)) {
+            chip.set_clock_rate(static_cast<uint32_t>(std::max(clock, 1)));
+        }
 
-		ImGui::Spacing();
+        const auto* preset = c8::find_preset(chip.quirks());
+        const auto preset_name = preset ? std::string{preset->name} : std::string{"Custom"};
+        ImGui::Text("Quirk Preset: %s", preset_name.c_str());
 
-        // Reset and reload the ROM
-		if (ImGui::Button("Reset System")) {
-            const auto rom = chip.current_rom;
-			chip.reset();
-            if (std::filesystem::exists(rom)) {
-                (void)chip.load_rom(rom);
-            }
-		}
+        bool wrap = chip.quirks().wrap_sprites;
+        if (ImGui::Checkbox("Wrap Sprites", &wrap)) {
+            auto quirks = chip.quirks();
+            quirks.wrap_sprites = wrap;
+            chip.set_quirks(quirks);
+        }
+
+        ImGui::Spacing();
+
+        // Reset the system and load the last program again
+        if (ImGui::Button("Reset System")) {
+            chip.reset();
+        }
 
         // Pause/Resume/Step buttons
         if (chip.is_paused()) {
@@ -432,72 +484,66 @@ void MediaLayer::render_ui(chip8& chip) {
                 chip.pause();
             }
         }
-        
-		ImGui::Spacing();
-		ImGui::Separator();
-		ImGui::Spacing();
+
+        // Why execution stopped
+        const auto& stop = chip.last_stop();
+        if (const auto message = c8::describe(stop); !message.empty()) {
+            if (stop.reason == c8::StopReason::fault) {
+                ImGui::TextColored(ImVec4{1.0f, 0.4f, 0.4f, 1.0f}, "%s", message.c_str());
+            }
+            else {
+                ImGui::TextUnformatted(message.c_str());
+            }
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
 
         // Display settings
-        static const uint8_t scale_step = 1;
-		ImGui::InputScalar("Display Scale", ImGuiDataType_U8, &display_scale, &scale_step);
-			
-		const uint32_t off = chip.display.get_background_color();
-		const uint32_t on  = chip.display.get_foreground_color();
+        static constexpr uint32_t scale_step = 1;
+        if (ImGui::InputScalar("Display Scale", ImGuiDataType_U32, &display_scale, &scale_step)) {
+            set_display_scale(display_scale);
+        }
 
-		auto off_arr = std::array<float, 4>{};
+        auto off_arr = std::array<float, 4>{};
         auto on_arr  = std::array<float, 4>{};
 
-        RGBA2FloatArray(off, off_arr);
-        RGBA2FloatArray(on, on_arr);
+        RGBA2FloatArray(background_color, off_arr);
+        RGBA2FloatArray(foreground_color, on_arr);
 
-		if (ImGui::ColorEdit3("Background Color", off_arr.data())) {
-            chip.display.set_background_color(FloatArray2RGBA(off_arr));
-		}
-		if (ImGui::ColorEdit3("Foreground Color", on_arr.data())) {
-            chip.display.set_foreground_color(FloatArray2RGBA(on_arr));
-		}
+        if (ImGui::ColorEdit3("Background Color", off_arr.data())) {
+            background_color = FloatArray2RGBA(off_arr);
+        }
+        if (ImGui::ColorEdit3("Foreground Color", on_arr.data())) {
+            foreground_color = FloatArray2RGBA(on_arr);
+        }
+    }
+    ImGui::End();
 
-		bool wrap = chip.display.get_wrapping();
-		if (ImGui::Checkbox("Wrapping", &wrap)) {
-			chip.display.set_wrapping(wrap);
-		}
-	}
-	ImGui::End();
 
-	//----------------------------------------------------------------------------------
-	// CHIP-8 Display
-	//----------------------------------------------------------------------------------
-	if (ImGui::Begin("Display", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-
-		const auto x_size = static_cast<float>(chip.display.size_x() * display_scale);
-		const auto y_size = static_cast<float>(chip.display.size_y() * display_scale);
+    //----------------------------------------------------------------------------------
+    // CHIP-8 Display
+    //----------------------------------------------------------------------------------
+    if (ImGui::Begin("Display", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        const auto& display = state.display;
+        const auto x_size = static_cast<float>(display.width() * display_scale);
+        const auto y_size = static_cast<float>(display.height() * display_scale);
 
         // Draw the display texture
-		ImGui::BeginChild("Image", {x_size + 16.0f, y_size + 16.0f}, ImGuiChildFlags_Borders);
-		ImGui::Image(static_cast<ImTextureID>(texture), ImVec2{x_size, y_size});
-		ImGui::EndChild();
-	}
-	ImGui::End();
+        ImGui::BeginChild("Image", {x_size + 16.0f, y_size + 16.0f}, ImGuiChildFlags_Borders);
+        ImGui::Image(static_cast<ImTextureID>(texture), ImVec2{x_size, y_size});
+        ImGui::EndChild();
+    }
+    ImGui::End();
 
 
-	//----------------------------------------------------------------------------------
-	// ROM Selection
-	//----------------------------------------------------------------------------------
-	if (file_selector.update()) {
-		if (chip.load_rom(file_selector.get_selected_file())) {
-            // Decompile the ROM and update the text editor
-            const auto program_data = std::span{&chip.memory[chip.rom_start], chip.rom_end - chip.rom_start};
-            const auto result = decompile_program(program_data);
-
-            for (auto idx : result.failures) {
-                std::cout << std::format("Decompilation failure on instruction {} (byte offset: {})", idx, idx * 2) << std::endl;
-            }
-
-            // SetText removes all markers, so show the breakpoints again
-            text_editor.SetText(std::vector<std::string_view>(result.program.begin(), result.program.end()));
-            update_breakpoint_markers(chip);
-        }
-	}
+    //----------------------------------------------------------------------------------
+    // ROM Selection
+    //----------------------------------------------------------------------------------
+    if (file_selector.update()) {
+        load_rom_file(chip, file_selector.get_selected_file());
+    }
 
 
     //----------------------------------------------------------------------------------
@@ -521,19 +567,30 @@ void MediaLayer::render_ui(chip8& chip) {
                     std::cout << std::format("Compilation failure on line {} (empty instruction written)", idx + 1) << std::endl;
                 }
 
-                (void)chip.load_rom(result.program_data);
+                // Store the words big-endian
+                auto bytes = std::vector<uint8_t>{};
+                bytes.reserve(result.program_data.size() * 2);
+                for (const auto word : result.program_data) {
+                    bytes.push_back(static_cast<uint8_t>(word >> 8));
+                    bytes.push_back(static_cast<uint8_t>(word));
+                }
+
+                if (const auto loaded = chip.load_program(bytes); !loaded) {
+                    std::cout << "Error loading the compiled program: " << loaded.error() << '\n';
+                }
             }
 
             if (ImGui::BeginMenu("Breakpoint")) {
-                // Each editor line holds one instruction. Line numbers and instruction numbers both start at 0.
-                const auto cursor_line = static_cast<uint16_t>(text_editor.GetMainCursorPosition().line);
+                // Each editor line holds one 2-byte instruction, starting at the program origin
+                const auto cursor_line = text_editor.GetMainCursorPosition().line;
+                const auto address = static_cast<uint16_t>(chip.program_origin() + (cursor_line * 2));
 
                 if (ImGui::MenuItem("Add")) {
-                    chip.add_breakpoint(cursor_line);
+                    chip.add_breakpoint(address);
                     update_breakpoint_markers(chip);
                 }
                 if (ImGui::MenuItem("Remove")) {
-                    chip.remove_breakpoint(cursor_line);
+                    chip.remove_breakpoint(address);
                     update_breakpoint_markers(chip);
                 }
                 if (ImGui::MenuItem("Clear")) {
@@ -550,10 +607,10 @@ void MediaLayer::render_ui(chip8& chip) {
     ImGui::End();
 
 
-	//----------------------------------------------------------------------------------
-	// Memory
-	//----------------------------------------------------------------------------------
-	mem_editor.DrawWindow("Memory", chip.memory.data(), chip.memory.size());
+    //----------------------------------------------------------------------------------
+    // Memory
+    //----------------------------------------------------------------------------------
+    mem_editor.DrawWindow("Memory", state.memory.data(), state.memory.size());
 }
 
 
@@ -587,12 +644,19 @@ void MediaLayer::build_default_layout(ImGuiID dockspace_id) {
 }
 
 
-void MediaLayer::update_breakpoint_markers(const chip8& chip) {
+void MediaLayer::update_breakpoint_markers(const c8::Chip8& chip) {
     static constexpr ImU32 breakpoint_color = IM_COL32(255, 64, 64, 96);
 
     text_editor.ClearMarkers();
 
-    for (const auto line : chip.get_breakpoints()) {
+    // Each editor line holds one 2-byte instruction, so only even offsets from the origin have a line
+    const auto origin = chip.program_origin();
+    for (const auto address : chip.breakpoints()) {
+        if (address < origin || ((address - origin) % 2) != 0) {
+            continue;
+        }
+
+        const auto line = static_cast<size_t>((address - origin) / 2);
         if (line < text_editor.GetLineCount()) {
             text_editor.AddMarker(line, breakpoint_color, breakpoint_color, "Breakpoint", "");
         }

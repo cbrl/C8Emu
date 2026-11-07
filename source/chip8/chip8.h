@@ -1,183 +1,267 @@
 #pragma once
 
-#include <array>
+#include <cstddef>
 #include <cstdint>
-#include <filesystem>
-#include <functional>
+#include <expected>
+#include <optional>
+#include <set>
 #include <span>
-#include <unordered_set>
+#include <string>
+#include <string_view>
 #include <vector>
 
-#include "display/display.h"
-#include "input/input.h"
-#include "timer/chip_timer.h"
+#include "chip8/machine_state.h"
+#include "chip8/quirks.h"
+
+namespace c8 {
+
+/// Why execution stopped
+enum class StopReason : uint8_t {
+    none,
+    user,         ///< The user paused execution
+    breakpoint,   ///< The PC reached a breakpoint
+    fault,        ///< An instruction faulted. StopEvent::fault has the details.
+    left_program, ///< The PC left the loaded program
+    key_wait,     ///< FX0A waits for a key press
+};
+
+/// A stop of execution and where it happened
+struct StopEvent {
+    StopReason reason = StopReason::none;
+    uint16_t   pc     = 0;
+    FaultInfo  fault;
+
+    friend constexpr auto operator==(const StopEvent&, const StopEvent&) -> bool = default;
+};
+
+/// Text for the user, for example "Fault: stack underflow at 0x0204 (00EE)". Empty for StopReason::none.
+[[nodiscard]]
+auto describe(const StopEvent& event) -> std::string;
 
 
-class chip8 {
-    friend class ISA;
-    friend class MediaLayer;
-
+/**
+ * @class Chip8
+ *
+ * @brief A CHIP-8 machine with run control and breakpoints
+ *
+ * @details The machine does not read the clock. The caller runs cycles at the
+ *          clock rate and calls tick_timers() at 60 Hz. The same calls always
+ *          give the same result, which makes tests and stepping deterministic.
+ */
+class Chip8 {
 public:
+    static constexpr uint32_t min_clock_rate = 1;
+    static constexpr uint32_t max_clock_rate = 1'000'000;
 
-    chip8();
+    explicit Chip8(const Quirks& quirks = presets[0].quirks);
 
-    /// Resets the state of the system
-	auto reset() -> void;
+    //--------------------------------------------------------------------------------
+    // Program
+    //--------------------------------------------------------------------------------
 
-    /// Pause execution
-	auto pause() noexcept -> void;
+    /**
+     * @brief Load a program and reset the machine
+     *
+     * @details The machine keeps a copy of the program, so reset() can load it
+     *          again. If the program is empty or too large, nothing changes.
+     *
+     * @param[in] program  The program bytes
+     * @param[in] origin   The address of the first byte
+     *
+     * @return An error message on failure
+     */
+    [[nodiscard]]
+    auto load_program(std::span<const uint8_t> program, uint16_t origin = MachineState::program_start)
+        -> std::expected<void, std::string>;
+
+    /// Set the power-on state and load the last program again. The machine runs if a program exists.
+    auto reset() -> void;
+
+    /// The bytes of the last loaded program
+    [[nodiscard]]
+    auto program() const noexcept -> std::span<const uint8_t> {
+        return image;
+    }
+
+    /// The address of the first program byte
+    [[nodiscard]]
+    auto program_origin() const noexcept -> uint16_t {
+        return origin;
+    }
+
+    /// The address after the last program byte
+    [[nodiscard]]
+    auto program_end() const noexcept -> uint32_t {
+        return static_cast<uint32_t>(origin + image.size());
+    }
+
+    /// The largest program that fits in memory at an origin
+    [[nodiscard]]
+    auto max_program_size(uint16_t at = MachineState::program_start) const noexcept -> size_t {
+        return (at < machine.memory.size()) ? (machine.memory.size() - at) : 0;
+    }
+
+
+    //--------------------------------------------------------------------------------
+    // Execution
+    //--------------------------------------------------------------------------------
+
+    /// Pause execution. If execution already stopped for another reason, the reason does not change.
+    auto pause() noexcept -> void;
+
+    /// Resume execution. The instruction at the PC runs even if it has a breakpoint.
+    auto resume() noexcept -> void;
+
+    /// Run the instruction at the PC, even if it has a breakpoint. The pause state does not change.
+    auto step() noexcept -> void;
+
+    /// Run one instruction if the machine is not paused
+    auto run_cycle() noexcept -> void;
+
+    /// Decrement the delay and sound timers once. Call it at 60 Hz.
+    auto tick_timers() noexcept -> void;
 
     [[nodiscard]]
     auto is_paused() const noexcept -> bool {
         return paused;
     }
 
-    /// Resume execution. The instruction at the PC runs even if it has a breakpoint.
-	auto resume() noexcept -> void;
-
-    /// Run the instruction at the PC, even if it has a breakpoint. The pause state does not change.
-    auto step() -> void;
-
-    /// Run a single cycle of the syystem
-    auto run_cycle() -> void;
-
-    /**
-     * @brief Load a ROM into memory
-     * 
-     * @details Resets the state of the system and loads the ROM.
-     *          If the file does not exist, cannot be opened, or is
-     *          too large for the memory, then the function will exit
-     *          early without resetting the system.
-     * 
-     * @param[in] file  The path to the ROM file
-     * 
-     * @return True if the file loaded without error, otherwise false.
-     */
+    /// The last reason execution stopped. StopReason::none while running.
     [[nodiscard]]
-    auto load_rom(const std::filesystem::path& file) -> bool;
+    auto last_stop() const noexcept -> const StopEvent& {
+        return stop_event;
+    }
 
-    /**
-     * @brief Load a ROM into memory
-     *
-     * @details Resets the state of the system and loads the ROM.
-     *          If the ROM is too large for the memory, then the
-     *          function will exit early without resetting the system.
-     *
-     * @param[in] instructions  The list of instructions to write into memory
-     * 
-     * @return True if the file loaded without error, otherwise false.
-     */
+    /// True while FX0A waits for a key
     [[nodiscard]]
-    auto load_rom(std::span<const uint16_t> rom_data) -> bool;
+    auto waiting_for_key() const noexcept -> bool {
+        return key_wait_register.has_value();
+    }
 
+    /// True while the sound timer is non-zero
+    [[nodiscard]]
+    auto sound_active() const noexcept -> bool {
+        return machine.sound_timer > 0;
+    }
+
+
+    //--------------------------------------------------------------------------------
+    // Input
+    //--------------------------------------------------------------------------------
+
+    /// Set the state of a key (0x0-0xF). A press completes a pending FX0A.
+    auto set_key(uint8_t key, bool down) noexcept -> void;
+
+
+    //--------------------------------------------------------------------------------
+    // Configuration
+    //--------------------------------------------------------------------------------
+
+    [[nodiscard]]
+    auto quirks() const noexcept -> const Quirks& {
+        return quirk_set;
+    }
+
+    auto set_quirks(const Quirks& quirks) noexcept -> void {
+        quirk_set = quirks;
+    }
+
+    /// The instruction rate in Hz
     [[nodiscard]]
     auto get_clock_rate() const noexcept -> uint32_t {
         return clock_rate;
     }
-    auto set_clock_rate(uint32_t rate) noexcept -> void {
-        clock_rate = rate;
-    }
 
-    /// Get the legacy mode status. Legacy mode changes the behavior of certain instructions. Newer ROMS might not expect legacy behavior.
-    [[nodiscard]]
-    auto is_legacy_mode() const noexcept -> bool {
-        return legacy_mode;
-    }
-
-    /// Enable/disable legacy mode, which changes the behavior of certain instructions. Newer ROMS might not expect legacy behavior.
-    auto set_legacy_mode(bool state) noexcept -> void {
-        legacy_mode = state;
-    }
+    /// Set the instruction rate in Hz. The value is clamped to [min_clock_rate, max_clock_rate].
+    auto set_clock_rate(uint32_t rate) noexcept -> void;
 
     /**
-    * @brief Add a breakpoint at the specified instruction number
-    * @param instruction_number  The instruction number to break at. 0 specifies the first instruction in the ROM.
-    */
-    auto add_breakpoint(uint16_t instruction_number) -> void {
-        breakpoints.insert(instruction_number);
+     * @brief Set the seed of the CXNN random number generator
+     *
+     * @details With a seed, each reset starts the same random sequence. Without
+     *          a seed (nullopt), each reset uses a new seed. The change applies now.
+     */
+    auto set_seed(std::optional<uint32_t> seed) noexcept -> void;
+
+    [[nodiscard]]
+    auto get_seed() const noexcept -> std::optional<uint32_t> {
+        return fixed_seed;
     }
-    auto remove_breakpoint(uint16_t instruction_number) -> void {
-        breakpoints.erase(instruction_number);
+
+
+    //--------------------------------------------------------------------------------
+    // Breakpoints
+    //--------------------------------------------------------------------------------
+
+    auto add_breakpoint(uint16_t address) -> void {
+        breakpoint_set.insert(address);
     }
-    auto clear_breakpoints() -> void {
-        breakpoints.clear();
+
+    auto remove_breakpoint(uint16_t address) -> void {
+        breakpoint_set.erase(address);
+    }
+
+    /// Add or remove a breakpoint. Returns true if the breakpoint now exists.
+    auto toggle_breakpoint(uint16_t address) -> bool;
+
+    auto clear_breakpoints() noexcept -> void {
+        breakpoint_set.clear();
     }
 
     [[nodiscard]]
-    auto get_breakpoints() const noexcept -> const std::unordered_set<uint16_t>& {
-        return breakpoints;
+    auto has_breakpoint(uint16_t address) const -> bool {
+        return breakpoint_set.contains(address);
+    }
+
+    [[nodiscard]]
+    auto breakpoints() const noexcept -> const std::set<uint16_t>& {
+        return breakpoint_set;
+    }
+
+
+    //--------------------------------------------------------------------------------
+    // State
+    //--------------------------------------------------------------------------------
+
+    /// The machine state, for display
+    [[nodiscard]]
+    auto state() const noexcept -> const MachineState& {
+        return machine;
+    }
+
+    /// The machine state, for edits by a debugger or a test
+    [[nodiscard]]
+    auto state() noexcept -> MachineState& {
+        return machine;
     }
 
 private:
+    auto execute_cycle() noexcept -> void;
+    auto stop(const StopEvent& event) noexcept -> void;
+    auto next_seed() noexcept -> uint32_t;
 
-    //--------------------------------------------------------------------------------
-    // Execution State
-    //--------------------------------------------------------------------------------
+    MachineState machine;
+    Quirks quirk_set;
 
-    // Enables legacy mode. Modifies the behavior of some instructions that
-    // function differently according to the S-CHIP documentation.
-    bool legacy_mode = true;
+    // The last loaded program and its address
+    std::vector<uint8_t> image;
+    uint16_t origin = MachineState::program_start;
 
-	// The currently loaded ROM and its size
-	std::filesystem::path current_rom;
+    // Run control
+    bool paused = true;
+    bool skip_breakpoint = false;
+    StopEvent stop_event{};
+    std::set<uint16_t> breakpoint_set;
 
-	// Pauses execution when true
-	bool paused = false;
+    // The register that receives the key while FX0A waits
+    std::optional<uint8_t> key_wait_register;
 
-    // The clock speed in Hz
+    // The instruction rate in Hz
     uint32_t clock_rate = 500;
 
-    // Instruction numbers to pause execution at
-    std::unordered_set<uint16_t> breakpoints;
-
-    // When true, the next cycle ignores a breakpoint. resume() and step() set it,
-    // so that execution can continue from a breakpoint.
-    bool skip_breakpoint = false;
-
-
-    //--------------------------------------------------------------------------------
-    // Processor State
-    //--------------------------------------------------------------------------------
-
-    // System memory
-    std::array<uint8_t, 4096> memory;
-	static const size_t rom_start = 512;
-    size_t rom_end = rom_start;
-
-    // Registers
-    uint16_t pc = rom_start;
-    uint16_t i = 0;
-    std::array<uint8_t, 16> v;
-
-    // Stack
-    std::vector<uint16_t> stack;
-
-    // Input handler
-    Input input;
-
-    // Display
-    Display<64, 32> display;
-
-    // Delay and Sound timers
-    Chip8Timer timer;
-
-    // Font
-    static inline const std::array<uint8_t, 80> font = {
-        0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
-        0x20, 0x60, 0x20, 0x20, 0x70, // 1
-        0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
-        0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
-        0x90, 0x90, 0xF0, 0x10, 0x10, // 4
-        0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
-        0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
-        0xF0, 0x10, 0x20, 0x40, 0x40, // 7
-        0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
-        0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
-        0xF0, 0x90, 0xF0, 0x90, 0x90, // A
-        0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
-        0xF0, 0x80, 0x80, 0x80, 0xF0, // C
-        0xE0, 0x90, 0x90, 0x90, 0xE0, // D
-        0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-        0xF0, 0x80, 0xF0, 0x80, 0x80  // F
-    };
+    // Random number seeds
+    std::optional<uint32_t> fixed_seed;
+    uint64_t seed_counter = 0;
 };
+
+} // namespace c8

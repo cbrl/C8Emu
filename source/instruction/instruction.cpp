@@ -36,44 +36,39 @@ auto to_instruction(std::string_view str) -> std::optional<instruction> {
         return std::nullopt;
     }
 
-    static const auto get_vx = [](auto&& parts, size_t arg_idx) -> std::optional<uint16_t> {
-        if (parts[arg_idx][0] != 'v') {
+    // A register operand (v0-vF) as an index
+    static const auto get_register = [](const auto& parts, size_t arg_idx) -> std::optional<uint16_t> {
+        if (arg_idx >= parts.size() || parts[arg_idx].size() < 2 || parts[arg_idx][0] != 'v') {
             return std::nullopt;
         }
-        //if (auto vx = str_to<uint16_t>(parts[arg_idx].substr(1), 16)) { //remove the 'v' from the beginning
-        //    return *vx << 8;
-        //}
-        //return std::nullopt;
-        try {
-            return static_cast<uint16_t>(std::strtoul(parts[arg_idx].substr(1).data(), nullptr, 16)) << 8;
-        }
-        catch (...) {
+        const auto reg = str_to<uint16_t>(std::string_view{parts[arg_idx]}.substr(1), 16);
+        if (!reg || *reg > 0xF) {
             return std::nullopt;
         }
+        return reg;
     };
-    static const auto get_vy = [](auto&& parts, size_t arg_idx) -> std::optional<uint16_t> {
-        if (parts[arg_idx][0] != 'v') {
-            return std::nullopt;
+    static const auto get_vx = [](const auto& parts, size_t arg_idx) -> std::optional<uint16_t> {
+        if (const auto reg = get_register(parts, arg_idx)) {
+            return static_cast<uint16_t>(*reg << 8);
         }
-        //if (auto vy = str_to<uint16_t>(parts[arg_idx].substr(1), 16)) {
-        //    return *vy << 4;
-        //}
-        //return std::nullopt;
-        try {
-            return static_cast<uint16_t>(std::strtoul(parts[arg_idx].substr(1).data(), nullptr, 16)) << 4;
-        }
-        catch (...) {
-            return std::nullopt;
-        }
+        return std::nullopt;
     };
-    static const auto get_n = [](auto&& parts, size_t arg_idx) -> std::optional<uint16_t> {
-        //return str_to<uint16_t>(parts[arg_idx], 16);
-        try {
-            return static_cast<uint16_t>(std::strtoul(parts[arg_idx].data(), nullptr, 16));
+    static const auto get_vy = [](const auto& parts, size_t arg_idx) -> std::optional<uint16_t> {
+        if (const auto reg = get_register(parts, arg_idx)) {
+            return static_cast<uint16_t>(*reg << 4);
         }
-        catch (...) {
+        return std::nullopt;
+    };
+    // A hexadecimal number, with or without the 0x prefix
+    static const auto get_n = [](const auto& parts, size_t arg_idx) -> std::optional<uint16_t> {
+        if (arg_idx >= parts.size()) {
             return std::nullopt;
         }
+        auto text = std::string_view{parts[arg_idx]};
+        if (text.starts_with("0x")) {
+            text.remove_prefix(2);
+        }
+        return str_to<uint16_t>(text, 16);
     };
 
     if (parts[0] == "sys" and parts.size() == 2) {
@@ -93,7 +88,7 @@ auto to_instruction(std::string_view str) -> std::optional<instruction> {
                 return instruction(Opcodes::jmp_nnn, *nnn);
             }
         }
-        else if (parts.size() == 3) {
+        else if (parts.size() == 3 and parts[1] == "v0") {
             if (auto nnn = get_n(parts, 2)) {
                 return instruction(Opcodes::jmp_v0_nnn, *nnn);
             }
@@ -106,6 +101,9 @@ auto to_instruction(std::string_view str) -> std::optional<instruction> {
     }
     else if (parts[0] == "se" and parts.size() == 3) {
         auto vx = get_vx(parts, 1);
+        if (!vx) {
+            return std::nullopt;
+        }
 
         if (parts[2][0] == 'v') {
             if (auto vy = get_vy(parts, 2)) {
@@ -120,6 +118,9 @@ auto to_instruction(std::string_view str) -> std::optional<instruction> {
     }
     else if (parts[0] == "sne" and parts.size() == 3) {
         auto vx = get_vx(parts, 1);
+        if (!vx) {
+            return std::nullopt;
+        }
 
         if (parts[2][0] == 'v') {
             if (auto vy = get_vy(parts, 2)) {
@@ -133,13 +134,16 @@ auto to_instruction(std::string_view str) -> std::optional<instruction> {
         }
     }
     else if (parts[0] == "mov" and parts.size() == 3) {
-        if (parts[1][0] == 'i') {
+        if (parts[1] == "i") {
             if (auto nnn = get_n(parts, 2)) {
                 return instruction(Opcodes::mov_i_nnn, *nnn);
             }
         }
         else {
             auto vx = get_vx(parts, 1);
+            if (!vx) {
+                return std::nullopt;
+            }
 
             if (parts[2][0] == 'v') {
                 if (auto vy = get_vy(parts, 2)) {
@@ -153,14 +157,17 @@ auto to_instruction(std::string_view str) -> std::optional<instruction> {
             }
         }
     }
-    else if (parts[0] == "add") {
-        if (parts[1][0] == 'i') {
+    else if (parts[0] == "add" and parts.size() == 3) {
+        if (parts[1] == "i") {
             if (auto vx = get_vx(parts, 2)) {
                 return instruction(Opcodes::add_i_vx, *vx);
             }
         }
         else {
             auto vx = get_vx(parts, 1);
+            if (!vx) {
+                return std::nullopt;
+            }
 
             if (parts[2][0] == 'v') {
                 if (auto vy = get_vy(parts, 2)) {
