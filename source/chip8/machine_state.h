@@ -130,6 +130,12 @@ struct MachineState {
     uint16_t keys = 0;
     KeyWait key_wait;
 
+    // Frame state. A frame is instructions_per_frame cycles. The timers decrement at the end of each frame.
+    bool     vblank_wait    = false; ///< A draw waits for the end of the frame (display_wait quirk)
+    uint32_t cycle_in_frame = 0;     ///< Cycles done in the current frame
+    uint64_t frame_count    = 0;     ///< Frames completed since the reset
+    uint64_t total_cycles   = 0;     ///< Instructions executed since the reset
+
     // xorshift32 state for CXNN. It must not be 0.
     uint32_t rng = 1;
 

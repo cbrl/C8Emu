@@ -32,27 +32,9 @@ constexpr auto font = std::array<uint8_t, 80>{
 } // namespace
 
 
-auto describe(const StopEvent& event) -> std::string {
-    switch (event.reason) {
-        case StopReason::none:
-            return {};
-        case StopReason::user:
-            return std::format("Paused at 0x{:04X}", event.pc);
-        case StopReason::breakpoint:
-            return std::format("Breakpoint at 0x{:04X}", event.pc);
-        case StopReason::fault:
-            return std::format("Fault: {} at 0x{:04X} ({:04X})", to_string(event.fault.kind), event.fault.pc, event.fault.opcode);
-        case StopReason::left_program:
-            return std::format("The PC left the program at 0x{:04X}", event.pc);
-        case StopReason::key_wait:
-            return std::format("Waiting for a key at 0x{:04X}", event.pc);
-    }
-    return {};
-}
-
-
-Chip8::Chip8(const Quirks& quirks) :
+Chip8::Chip8(const Quirks& quirks, uint32_t instructions_per_frame) :
     quirk_set(quirks),
+    ipf(std::clamp(instructions_per_frame, min_instructions_per_frame, max_instructions_per_frame)),
     seed_counter(static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count())) {
     reset();
 }
@@ -80,64 +62,53 @@ auto Chip8::load_program(std::span<const uint8_t> program, uint16_t new_origin) 
 
 
 auto Chip8::reset() -> void {
+    // The keys are physical, so a reset does not release them
+    const auto held_keys = machine.keys;
+
     machine = MachineState{};
+    machine.keys = held_keys;
 
     std::ranges::copy(font, machine.memory.begin() + MachineState::font_address);
     std::ranges::copy(image, machine.memory.begin() + origin);
 
     machine.pc  = origin;
     machine.rng = next_seed();
-
-    key_wait_register.reset();
-    skip_breakpoint = false;
-    stop_event = {};
-
-    // Run the program at once. Without a program there is nothing to run.
-    paused = image.empty();
 }
 
 
-auto Chip8::pause() noexcept -> void {
-    // Keep the first reason, unless the machine only waits for a key
-    if (paused && stop_event.reason != StopReason::key_wait) {
-        return;
+auto Chip8::cycle() noexcept -> CycleResult {
+    // After a draw with the display wait quirk, the rest of the frame is idle
+    if (machine.vblank_wait) {
+        end_frame();
+        return {.frame_end = true};
     }
 
-    // A key press must not resume a paused machine. FX0A runs again after resume().
-    key_wait_register.reset();
-    stop({.reason = StopReason::user, .pc = machine.pc});
-}
-
-
-auto Chip8::resume() noexcept -> void {
-    key_wait_register.reset();
-    stop_event = {};
-    skip_breakpoint = true;
-    paused = false;
-}
-
-
-auto Chip8::step() noexcept -> void {
-    key_wait_register.reset();
-    skip_breakpoint = true;
-    execute_cycle();
-}
-
-
-auto Chip8::run_cycle() noexcept -> void {
-    if (!paused) {
-        execute_cycle();
+    const uint16_t pc = machine.pc;
+    if ((static_cast<size_t>(pc) + 1) >= machine.memory.size()) {
+        return {.fault = {Fault::pc_out_of_range, pc, 0}};
     }
-}
 
+    const uint16_t opcode = machine.read_word(pc);
+    const auto result = isa::execute(machine, quirk_set, opcode);
 
-auto Chip8::tick_timers() noexcept -> void {
-    if (machine.delay_timer > 0) {
-        --machine.delay_timer;
+    if (result.fault != Fault::none) {
+        return {.fault = {result.fault, pc, opcode}};
     }
-    if (machine.sound_timer > 0) {
-        --machine.sound_timer;
+
+    ++machine.total_cycles;
+
+    if ((result.effect == isa::Effect::drew) && quirk_set.display_wait) {
+        machine.vblank_wait = true;
     }
+
+    // A lower instructions-per-frame setting ends the current frame at once
+    ++machine.cycle_in_frame;
+    if (machine.cycle_in_frame >= ipf) {
+        end_frame();
+        return {.executed = true, .frame_end = true};
+    }
+
+    return {.executed = true};
 }
 
 
@@ -147,29 +118,11 @@ auto Chip8::set_key(uint8_t key, bool down) noexcept -> void {
     const auto bit = static_cast<uint16_t>(1u << key);
     machine.keys = down ? static_cast<uint16_t>(machine.keys | bit)
                         : static_cast<uint16_t>(machine.keys & ~bit);
-
-    if (!down || !key_wait_register) {
-        return;
-    }
-
-    // Complete FX0A only if the PC still points at the same FX0A instruction
-    const auto reg = *key_wait_register;
-    const auto expected = static_cast<uint16_t>(0xF00A | (reg << 8));
-    key_wait_register.reset();
-
-    if (machine.read_word(machine.pc) != expected) {
-        return;
-    }
-
-    machine.v[reg] = key;
-    machine.pc = static_cast<uint16_t>(machine.pc + 2);
-    stop_event = {};
-    paused = false;
 }
 
 
-auto Chip8::set_clock_rate(uint32_t rate) noexcept -> void {
-    clock_rate = std::clamp(rate, min_clock_rate, max_clock_rate);
+auto Chip8::set_instructions_per_frame(uint32_t count) noexcept -> void {
+    ipf = std::clamp(count, min_instructions_per_frame, max_instructions_per_frame);
 }
 
 
@@ -179,52 +132,17 @@ auto Chip8::set_seed(std::optional<uint32_t> seed) noexcept -> void {
 }
 
 
-auto Chip8::toggle_breakpoint(uint16_t address) -> bool {
-    if (breakpoint_set.erase(address) != 0) {
-        return false;
+auto Chip8::end_frame() noexcept -> void {
+    machine.vblank_wait = false;
+    machine.cycle_in_frame = 0;
+    ++machine.frame_count;
+
+    if (machine.delay_timer > 0) {
+        --machine.delay_timer;
     }
-    breakpoint_set.insert(address);
-    return true;
-}
-
-
-auto Chip8::execute_cycle() noexcept -> void {
-    const uint16_t pc = machine.pc;
-
-    if (pc < origin || pc >= program_end()) {
-        stop({.reason = StopReason::left_program, .pc = pc});
-        return;
+    if (machine.sound_timer > 0) {
+        --machine.sound_timer;
     }
-
-    if ((static_cast<size_t>(pc) + 1) >= machine.memory.size()) {
-        stop({.reason = StopReason::fault, .pc = pc, .fault = {Fault::pc_out_of_range, pc, 0}});
-        return;
-    }
-
-    if (!skip_breakpoint && breakpoint_set.contains(pc)) {
-        stop({.reason = StopReason::breakpoint, .pc = pc});
-        return;
-    }
-    skip_breakpoint = false;
-
-    const uint16_t opcode = machine.read_word(pc);
-    const auto result = isa::execute(machine, quirk_set, opcode);
-
-    if (result.fault != Fault::none) {
-        stop({.reason = StopReason::fault, .pc = pc, .fault = {result.fault, pc, opcode}});
-        return;
-    }
-
-    if (result.effect == isa::Effect::waiting) {
-        key_wait_register = static_cast<uint8_t>((opcode >> 8) & 0xF);
-        stop({.reason = StopReason::key_wait, .pc = pc});
-    }
-}
-
-
-auto Chip8::stop(const StopEvent& event) noexcept -> void {
-    stop_event = event;
-    paused = true;
 }
 
 

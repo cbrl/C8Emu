@@ -2,59 +2,71 @@
 
 #include "frontend/rom_files.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <cstdint>
+
+namespace {
+
+// Convert the time of one host frame to emulated frames
+auto to_emulated_frames(double seconds) -> double {
+	constexpr double frame_period = 1.0 / c8::Chip8::frame_rate;
+
+    // A long stall (a breakpoint in a native debugger, a blocked window) counts as a short one
+    seconds = std::clamp(seconds, 0.0, 0.25);
+
+    // A 60 Hz frame limit jitters around the frame period. Count each such frame as
+    // exactly one frame, so the jitter does not skip or double a frame.
+    if (std::abs(seconds - frame_period) <= 0.001) {
+        return 1.0;
+    }
+    return seconds * c8::Chip8::frame_rate;
+}
+
+} // namespace
 
 
 auto Chip8Emulator::load_rom(const std::filesystem::path& file) -> std::expected<void, std::string> {
     return c8::read_rom_file(file, chip.max_program_size())
-        .and_then([this](const std::vector<uint8_t>& data) { return chip.load_program(data); });
+        .and_then([this](const std::vector<uint8_t>& data) {
+			return debugger.load_program(data);
+		});
 }
 
 
 auto Chip8Emulator::run() -> void {
-    using seconds = std::chrono::duration<double>;
-    static constexpr auto timer_period = seconds{1.0 / 60.0};
+    // After a slow host frame, catch up at most this many frames
+    static constexpr double max_backlog = 4.0;
 
-    bool stop = false;
-    auto clock_dt = seconds{0};
-    auto timer_dt = seconds{0};
+    // The longest time that one host frame spends in emulation
+    static constexpr auto emulation_budget = std::chrono::milliseconds{12};
 
-    while (!stop) {
-        // Update the timer
+    // Emulated frames that are due but did not run yet
+    double backlog = 0.0;
+    bool quit = false;
+
+    while (!quit) {
         timer.tick();
-        const auto dt = timer.delta_time();
 
-        if (chip.is_paused()) {
-            // Do not let time build up while paused
-            clock_dt = seconds{0};
-            timer_dt = seconds{0};
+        // Read the input first, so the emulated frames see the newest key state
+        media_layer.process_events(chip, quit);
+
+        if (debugger.is_running()) {
+            backlog = std::min(backlog + to_emulated_frames(timer.delta_time().count()), max_backlog);
+
+            const auto frames = static_cast<uint32_t>(backlog);
+            backlog -= frames;
+
+            if (frames > 0) {
+                (void)debugger.run_frames(frames, c8::Debugger::clock::now() + emulation_budget);
+            }
         }
         else {
-            clock_dt += dt;
-            timer_dt += dt;
-
-            // If the elapsed time is greater than the clock period, then run a cycle
-            if (clock_dt.count() >= (1.0 / chip.get_clock_rate())) {
-                chip.run_cycle();
-                clock_dt = seconds{0};
-            }
-
-            // Decrement the delay and sound timers at 60 Hz. Drop the backlog after a long frame.
-            if (timer_dt >= timer_period) {
-                chip.tick_timers();
-                timer_dt = (timer_dt >= (2 * timer_period)) ? seconds{0} : (timer_dt - timer_period);
-            }
+            // Do not let time build up while paused
+            backlog = 0.0;
         }
 
-        // Process SDL events
-        media_layer.process_events(chip, stop);
-
-        // Render the UI
-        render();
+        media_layer.render(chip, debugger);
     }
-}
-
-
-auto Chip8Emulator::render() -> void {
-    media_layer.render(chip);
 }

@@ -4,10 +4,8 @@
 #include <cstdint>
 #include <expected>
 #include <optional>
-#include <set>
 #include <span>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "chip8/machine_state.h"
@@ -15,45 +13,38 @@
 
 namespace c8 {
 
-/// Why execution stopped
-enum class StopReason : uint8_t {
-    none,
-    user,         ///< The user paused execution
-    breakpoint,   ///< The PC reached a breakpoint
-    fault,        ///< An instruction faulted. StopEvent::fault has the details.
-    left_program, ///< The PC left the loaded program
-    key_wait,     ///< FX0A waits for a key press
+/// The result of one Chip8::cycle() call
+struct CycleResult {
+    bool      executed  = false; ///< An instruction ran. False for an idle cycle and for a fault.
+    bool      frame_end = false; ///< The frame ended after this cycle, and the timers decremented
+    FaultInfo fault;             ///< The fault if fault.kind is not Fault::none. The state did not change.
 };
-
-/// A stop of execution and where it happened
-struct StopEvent {
-    StopReason reason = StopReason::none;
-    uint16_t   pc     = 0;
-    FaultInfo  fault;
-
-    friend constexpr auto operator==(const StopEvent&, const StopEvent&) -> bool = default;
-};
-
-/// Text for the user, for example "Fault: stack underflow at 0x0204 (00EE)". Empty for StopReason::none.
-[[nodiscard]]
-auto describe(const StopEvent& event) -> std::string;
 
 
 /**
  * @class Chip8
  *
- * @brief A CHIP-8 machine with run control and breakpoints
+ * @brief A CHIP-8 machine and the program it runs
  *
- * @details The machine does not read the clock. The caller runs cycles at the
- *          clock rate and calls tick_timers() at 60 Hz. The same calls always
- *          give the same result, which makes tests and stepping deterministic.
+ * @details The machine does not read the clock. Time advances only through
+ *          cycle(): each frame is instructions_per_frame() cycles, and the
+ *          timers decrement at the end of a frame. The same calls always give
+ *          the same state, so stepping and running agree.
+ *
+ *          Run control (pause, breakpoints, stepping) belongs to c8::Debugger.
  */
 class Chip8 {
 public:
-    static constexpr uint32_t min_clock_rate = 1;
-    static constexpr uint32_t max_clock_rate = 1'000'000;
+    /// Emulated frames per second. The delay and sound timers count at this rate.
+    static constexpr uint32_t frame_rate = 60;
 
-    explicit Chip8(const Quirks& quirks = presets[0].quirks);
+    static constexpr uint32_t min_instructions_per_frame = 1;
+    static constexpr uint32_t max_instructions_per_frame = 100'000;
+
+    explicit Chip8(
+        const Quirks& quirks = presets[0].quirks,
+        uint32_t instructions_per_frame = presets[0].instructions_per_frame
+    );
 
     //--------------------------------------------------------------------------------
     // Program
@@ -74,7 +65,7 @@ public:
     auto load_program(std::span<const uint8_t> program, uint16_t origin = MachineState::program_start)
         -> std::expected<void, std::string>;
 
-    /// Set the power-on state and load the last program again. The machine runs if a program exists.
+    /// Set the power-on state and load the last program again. Held keys stay held.
     auto reset() -> void;
 
     /// The bytes of the last loaded program
@@ -106,36 +97,22 @@ public:
     // Execution
     //--------------------------------------------------------------------------------
 
-    /// Pause execution. If execution already stopped for another reason, the reason does not change.
-    auto pause() noexcept -> void;
-
-    /// Resume execution. The instruction at the PC runs even if it has a breakpoint.
-    auto resume() noexcept -> void;
-
-    /// Run the instruction at the PC, even if it has a breakpoint. The pause state does not change.
-    auto step() noexcept -> void;
-
-    /// Run one instruction if the machine is not paused
-    auto run_cycle() noexcept -> void;
-
-    /// Decrement the delay and sound timers once. Call it at 60 Hz.
-    auto tick_timers() noexcept -> void;
-
-    [[nodiscard]]
-    auto is_paused() const noexcept -> bool {
-        return paused;
-    }
-
-    /// The last reason execution stopped. StopReason::none while running.
-    [[nodiscard]]
-    auto last_stop() const noexcept -> const StopEvent& {
-        return stop_event;
-    }
+    /**
+     * @brief Run one cycle
+     *
+     * @details A cycle runs the instruction at the PC. After a draw with the
+     *          display_wait quirk, the next cycle is idle: it only ends the
+     *          frame. The frame also ends after instructions_per_frame() cycles.
+     *          At the end of a frame, the timers decrement.
+     *
+     *          If the instruction faults, the state does not change.
+     */
+    auto cycle() noexcept -> CycleResult;
 
     /// True while FX0A waits for a key
     [[nodiscard]]
     auto waiting_for_key() const noexcept -> bool {
-        return key_wait_register.has_value();
+        return machine.in_key_wait();
     }
 
     /// True while the sound timer is non-zero
@@ -149,7 +126,7 @@ public:
     // Input
     //--------------------------------------------------------------------------------
 
-    /// Set the state of a key (0x0-0xF). A press completes a pending FX0A.
+    /// Set the state of a key (0x0-0xF). A waiting FX0A sees the change in its next cycle.
     auto set_key(uint8_t key, bool down) noexcept -> void;
 
 
@@ -166,14 +143,14 @@ public:
         quirk_set = quirks;
     }
 
-    /// The instruction rate in Hz
+    /// The number of cycles in each 60 Hz frame
     [[nodiscard]]
-    auto get_clock_rate() const noexcept -> uint32_t {
-        return clock_rate;
+    auto instructions_per_frame() const noexcept -> uint32_t {
+        return ipf;
     }
 
-    /// Set the instruction rate in Hz. The value is clamped to [min_clock_rate, max_clock_rate].
-    auto set_clock_rate(uint32_t rate) noexcept -> void;
+    /// Set the cycles in each frame. The value is clamped to [min_instructions_per_frame, max_instructions_per_frame].
+    auto set_instructions_per_frame(uint32_t count) noexcept -> void;
 
     /**
      * @brief Set the seed of the CXNN random number generator
@@ -186,36 +163,6 @@ public:
     [[nodiscard]]
     auto get_seed() const noexcept -> std::optional<uint32_t> {
         return fixed_seed;
-    }
-
-
-    //--------------------------------------------------------------------------------
-    // Breakpoints
-    //--------------------------------------------------------------------------------
-
-    auto add_breakpoint(uint16_t address) -> void {
-        breakpoint_set.insert(address);
-    }
-
-    auto remove_breakpoint(uint16_t address) -> void {
-        breakpoint_set.erase(address);
-    }
-
-    /// Add or remove a breakpoint. Returns true if the breakpoint now exists.
-    auto toggle_breakpoint(uint16_t address) -> bool;
-
-    auto clear_breakpoints() noexcept -> void {
-        breakpoint_set.clear();
-    }
-
-    [[nodiscard]]
-    auto has_breakpoint(uint16_t address) const -> bool {
-        return breakpoint_set.contains(address);
-    }
-
-    [[nodiscard]]
-    auto breakpoints() const noexcept -> const std::set<uint16_t>& {
-        return breakpoint_set;
     }
 
 
@@ -236,28 +183,16 @@ public:
     }
 
 private:
-    auto execute_cycle() noexcept -> void;
-    auto stop(const StopEvent& event) noexcept -> void;
+    auto end_frame() noexcept -> void;
     auto next_seed() noexcept -> uint32_t;
 
     MachineState machine;
     Quirks quirk_set;
+    uint32_t ipf;
 
     // The last loaded program and its address
     std::vector<uint8_t> image;
     uint16_t origin = MachineState::program_start;
-
-    // Run control
-    bool paused = true;
-    bool skip_breakpoint = false;
-    StopEvent stop_event{};
-    std::set<uint16_t> breakpoint_set;
-
-    // The register that receives the key while FX0A waits
-    std::optional<uint8_t> key_wait_register;
-
-    // The instruction rate in Hz
-    uint32_t clock_rate = 500;
 
     // Random number seeds
     std::optional<uint32_t> fixed_seed;

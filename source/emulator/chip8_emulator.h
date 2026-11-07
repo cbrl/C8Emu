@@ -5,6 +5,7 @@
 #include <string>
 
 #include "chip8/chip8.h"
+#include "debugger/debugger.h"
 #include "media_layer/media_layer.h"
 #include "util/stopwatch/stopwatch.h"
 
@@ -20,15 +21,15 @@ public:
     auto run() -> void;
 
 private:
-    /// Renders the user interface
-    auto render() -> void;
-
     // The CHIP-8 itself
     c8::Chip8 chip;
+
+    // Run control and breakpoints for the CHIP-8
+    c8::Debugger debugger{chip};
 
     // The media layer, which handles rendering and I/O.
     MediaLayer media_layer;
 
-    // The timer used to limit the execution rate
+    // Measures the time between host frames
     Stopwatch<> timer;
 };

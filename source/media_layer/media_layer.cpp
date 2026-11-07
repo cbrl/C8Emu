@@ -1,5 +1,6 @@
 #include "media_layer.h"
 #include "chip8/chip8.h"
+#include "debugger/debugger.h"
 #include "frontend/rom_files.h"
 #include "instruction/instruction.h"
 #include "util/strings.h"
@@ -79,9 +80,6 @@ MediaLayer::MediaLayer() {
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
-    // Use VSync
-    SDL_GL_SetSwapInterval(1);
-
     gl_context = SDL_GL_CreateContext(window);
     if (!gl_context) {
         const std::string error = SDL_GetError();
@@ -94,6 +92,9 @@ MediaLayer::MediaLayer() {
     }
 
     SDL_GL_MakeCurrent(window, gl_context);
+
+    // Turn VSync off. Then only the frame limit sets the pace of the main loop.
+    (void)SDL_GL_SetSwapInterval(0);
 
     // Load OpenGL functions
     gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress));
@@ -174,21 +175,66 @@ void MediaLayer::process_events(c8::Chip8& chip, bool& quit) {
             default: break;
         }
     }
+}
 
-    // Process sound output
-    if (chip.sound_active()) {
+
+void MediaLayer::render(c8::Chip8& chip, c8::Debugger& debugger) {
+    // Beep only while the program runs, so a pause during a beep is silent
+    if (debugger.is_running() && chip.sound_active()) {
         beeper.start_beep();
     }
     else {
         beeper.stop_beep();
     }
+
+    begin_frame();
+    render_ui(chip, debugger);
+    end_frame();
+
+    limit_frame_rate();
 }
 
 
-void MediaLayer::render(c8::Chip8& chip) {
-    begin_frame();
-    render_ui(chip);
-    end_frame();
+void MediaLayer::limit_frame_rate() {
+    if (!frame_limit_enabled) {
+        return;
+    }
+
+    const Uint64 frame_ns = static_cast<Uint64>(SDL_NS_PER_SECOND) / std::clamp(frame_limit, min_frame_limit, max_frame_limit);
+
+    next_frame_ns += frame_ns;
+
+    const Uint64 now = SDL_GetTicksNS();
+    if (next_frame_ns > now) {
+        SDL_DelayPrecise(next_frame_ns - now);
+    }
+    else if ((now - next_frame_ns) > frame_ns) {
+        // More than one frame late. Do not try to catch up.
+        next_frame_ns = now;
+    }
+}
+
+
+void MediaLayer::update_rate_meter(const c8::MachineState& state) {
+    const Uint64 now = SDL_GetTicksNS();
+    const Uint64 elapsed = now - rate.start_ns;
+
+    // A reset sets the counters back to zero. Then start a new measurement.
+    const bool counters_reset = (state.total_cycles < rate.start_cycles) || (state.frame_count < rate.start_frames);
+
+    if (!counters_reset && (elapsed < SDL_NS_PER_SECOND)) {
+        return;
+    }
+
+    if (!counters_reset && (rate.start_ns != 0)) {
+        const double seconds = static_cast<double>(elapsed) / static_cast<double>(SDL_NS_PER_SECOND);
+        rate.ips = static_cast<double>(state.total_cycles - rate.start_cycles) / seconds;
+        rate.fps = static_cast<double>(state.frame_count - rate.start_frames) / seconds;
+    }
+
+    rate.start_ns     = now;
+    rate.start_cycles = state.total_cycles;
+    rate.start_frames = state.frame_count;
 }
 
 
@@ -242,9 +288,9 @@ void MediaLayer::update_display_texture(const c8::Chip8& chip) {
 }
 
 
-void MediaLayer::load_rom_file(c8::Chip8& chip, const std::filesystem::path& file) {
+void MediaLayer::load_rom_file(c8::Chip8& chip, c8::Debugger& debugger, const std::filesystem::path& file) {
     const auto loaded = c8::read_rom_file(file, chip.max_program_size())
-        .and_then([&chip](const std::vector<uint8_t>& data) { return chip.load_program(data); });
+        .and_then([&debugger](const std::vector<uint8_t>& data) { return debugger.load_program(data); });
 
     if (!loaded) {
         std::cout << "Error loading ROM: " << loaded.error() << '\n';
@@ -260,15 +306,16 @@ void MediaLayer::load_rom_file(c8::Chip8& chip, const std::filesystem::path& fil
 
     // SetText removes all markers, so show the breakpoints again
     text_editor.SetText(std::vector<std::string_view>(result.program.begin(), result.program.end()));
-    update_breakpoint_markers(chip);
+    update_breakpoint_markers(chip, debugger);
 }
 
 
-void MediaLayer::render_ui(c8::Chip8& chip) {
+void MediaLayer::render_ui(c8::Chip8& chip, c8::Debugger& debugger) {
     auto& state = chip.state();
 
     // Update the CHIP-8 display texture
     update_display_texture(chip);
+    update_rate_meter(state);
 
 
     //----------------------------------------------------------------------------------
@@ -287,6 +334,7 @@ void MediaLayer::render_ui(c8::Chip8& chip) {
                     const auto name = std::string{preset.name};
                     if (ImGui::MenuItem(name.c_str(), nullptr, current == &preset)) {
                         chip.set_quirks(preset.quirks);
+                        chip.set_instructions_per_frame(preset.instructions_per_frame);
                     }
                 }
 
@@ -444,12 +492,20 @@ void MediaLayer::render_ui(c8::Chip8& chip) {
         ImGui::Separator();
         ImGui::Spacing();
 
-        // CHIP settings
-        int clock = static_cast<int>(chip.get_clock_rate());
-        ImGui::Text("Max Clock (Hz)");
-        if (ImGui::InputInt("##clock", &clock, 10, 100)) {
-            chip.set_clock_rate(static_cast<uint32_t>(std::max(clock, 1)));
+        // Emulation speed. The timers count at 60 Hz, so each frame runs this many instructions.
+        static constexpr uint32_t ipf_step      = 1;
+        static constexpr uint32_t ipf_step_fast = 10;
+
+        auto ipf = chip.instructions_per_frame();
+        ImGui::Text("Instructions/frame");
+        if (ImGui::InputScalar("##ipf", ImGuiDataType_U32, &ipf, &ipf_step, &ipf_step_fast)) {
+            chip.set_instructions_per_frame(ipf);
         }
+
+        const auto target_ips = chip.instructions_per_frame() * c8::Chip8::frame_rate;
+        ImGui::TextDisabled("~%u IPS target", target_ips);
+        ImGui::TextDisabled("Emulated: %.0f IPS, %.0f FPS", rate.ips, rate.fps);
+        ImGui::Spacing();
 
         const auto* preset = c8::find_preset(chip.quirks());
         const auto preset_name = preset ? std::string{preset->name} : std::string{"Custom"};
@@ -466,27 +522,27 @@ void MediaLayer::render_ui(c8::Chip8& chip) {
 
         // Reset the system and load the last program again
         if (ImGui::Button("Reset System")) {
-            chip.reset();
+            debugger.reset();
         }
 
         // Pause/Resume/Step buttons
-        if (chip.is_paused()) {
-            if (ImGui::Button("Resume")) {
-                chip.resume();
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Step")) {
-                chip.step();
+        if (debugger.is_running()) {
+            if (ImGui::Button("Pause")) {
+                debugger.pause();
             }
         }
         else {
-            if (ImGui::Button("Pause")) {
-                chip.pause();
+            if (ImGui::Button("Resume")) {
+                debugger.run();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Step")) {
+                debugger.step_into();
             }
         }
 
         // Why execution stopped
-        const auto& stop = chip.last_stop();
+        const auto& stop = debugger.last_stop();
         if (const auto message = c8::describe(stop); !message.empty()) {
             if (stop.reason == c8::StopReason::fault) {
                 ImGui::TextColored(ImVec4{1.0f, 0.4f, 0.4f, 1.0f}, "%s", message.c_str());
@@ -494,6 +550,10 @@ void MediaLayer::render_ui(c8::Chip8& chip) {
             else {
                 ImGui::TextUnformatted(message.c_str());
             }
+        }
+
+        if (chip.waiting_for_key()) {
+            ImGui::Text("Waiting for a key (v%X)", state.key_wait.reg);
         }
 
         ImGui::Spacing();
@@ -505,6 +565,18 @@ void MediaLayer::render_ui(c8::Chip8& chip) {
         if (ImGui::InputScalar("Display Scale", ImGuiDataType_U32, &display_scale, &scale_step)) {
             set_display_scale(display_scale);
         }
+
+        // The host frame rate. The emulation speed does not change with it.
+        static constexpr uint32_t frame_limit_step      = 1;
+        static constexpr uint32_t frame_limit_step_fast = 10;
+
+        ImGui::Checkbox("Limit Frame Rate", &frame_limit_enabled);
+        ImGui::BeginDisabled(!frame_limit_enabled);
+        if (ImGui::InputScalar("Max FPS", ImGuiDataType_U32, &frame_limit, &frame_limit_step, &frame_limit_step_fast)) {
+            frame_limit = std::clamp(frame_limit, min_frame_limit, max_frame_limit);
+        }
+        ImGui::EndDisabled();
+        ImGui::TextDisabled("Host: %.0f FPS", ImGui::GetIO().Framerate);
 
         auto off_arr = std::array<float, 4>{};
         auto on_arr  = std::array<float, 4>{};
@@ -542,7 +614,7 @@ void MediaLayer::render_ui(c8::Chip8& chip) {
     // ROM Selection
     //----------------------------------------------------------------------------------
     if (file_selector.update()) {
-        load_rom_file(chip, file_selector.get_selected_file());
+        load_rom_file(chip, debugger, file_selector.get_selected_file());
     }
 
 
@@ -575,7 +647,7 @@ void MediaLayer::render_ui(c8::Chip8& chip) {
                     bytes.push_back(static_cast<uint8_t>(word));
                 }
 
-                if (const auto loaded = chip.load_program(bytes); !loaded) {
+                if (const auto loaded = debugger.load_program(bytes); !loaded) {
                     std::cout << "Error loading the compiled program: " << loaded.error() << '\n';
                 }
             }
@@ -586,16 +658,16 @@ void MediaLayer::render_ui(c8::Chip8& chip) {
                 const auto address = static_cast<uint16_t>(chip.program_origin() + (cursor_line * 2));
 
                 if (ImGui::MenuItem("Add")) {
-                    chip.add_breakpoint(address);
-                    update_breakpoint_markers(chip);
+                    debugger.add_breakpoint(address);
+                    update_breakpoint_markers(chip, debugger);
                 }
                 if (ImGui::MenuItem("Remove")) {
-                    chip.remove_breakpoint(address);
-                    update_breakpoint_markers(chip);
+                    debugger.remove_breakpoint(address);
+                    update_breakpoint_markers(chip, debugger);
                 }
                 if (ImGui::MenuItem("Clear")) {
-                    chip.clear_breakpoints();
-                    update_breakpoint_markers(chip);
+                    debugger.clear_breakpoints();
+                    update_breakpoint_markers(chip, debugger);
                 }
 
                 ImGui::EndMenu();
@@ -644,14 +716,14 @@ void MediaLayer::build_default_layout(ImGuiID dockspace_id) {
 }
 
 
-void MediaLayer::update_breakpoint_markers(const c8::Chip8& chip) {
+void MediaLayer::update_breakpoint_markers(const c8::Chip8& chip, const c8::Debugger& debugger) {
     static constexpr ImU32 breakpoint_color = IM_COL32(255, 64, 64, 96);
 
     text_editor.ClearMarkers();
 
     // Each editor line holds one 2-byte instruction, so only even offsets from the origin have a line
     const auto origin = chip.program_origin();
-    for (const auto address : chip.breakpoints()) {
+    for (const auto address : debugger.breakpoints()) {
         if (address < origin || ((address - origin) % 2) != 0) {
             continue;
         }

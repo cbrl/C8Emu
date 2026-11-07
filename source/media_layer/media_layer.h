@@ -19,9 +19,17 @@
 
 namespace c8 {
 class Chip8;
+class Debugger;
+struct MachineState;
 }
 
 class MediaLayer {
+    // The range of the host frame limit. The emulated frame rate is fixed at c8::Chip8::frame_rate (60).
+    // The main loop catches up at most 4 emulated frames, so a host rate below 15 FPS slows the emulation.
+    // The minimum of 30 keeps a margin above that.
+    static constexpr uint32_t min_frame_limit = 30;
+    static constexpr uint32_t max_frame_limit = 1000;
+
 public:
     MediaLayer();
     ~MediaLayer();
@@ -35,11 +43,14 @@ public:
     auto process_events(c8::Chip8& chip, bool& quit) -> void;
 
     /**
-     * @brief Render the GUI
+     * @brief Render the GUI and update the sound output
      *
-     * @param[in] chip  A reference to an instance of a Chip8 to render the GUI for
+     * @details When the frame limit is on, the call waits for the next frame.
+     *
+     * @param[in] chip      The Chip8 to render the GUI for
+     * @param[in] debugger  The run control for the Chip8
      */
-    auto render(c8::Chip8& chip) -> void;
+    auto render(c8::Chip8& chip, c8::Debugger& debugger) -> void;
 
     /**
      * @brief Set the display scaling
@@ -54,19 +65,25 @@ private:
 
     auto begin_frame() -> void;
     auto end_frame() -> void;
-    auto render_ui(c8::Chip8& chip) -> void;
+    auto render_ui(c8::Chip8& chip, c8::Debugger& debugger) -> void;
+
+    // When the frame limit is on, sleep until the next frame
+    auto limit_frame_rate() -> void;
+
+    // Measure the emulated instructions and frames per second
+    auto update_rate_meter(const c8::MachineState& state) -> void;
 
     // Convert the CHIP-8 pixels to colors and upload them to the display texture
     auto update_display_texture(const c8::Chip8& chip) -> void;
 
     // Load a ROM file, then show its disassembly in the code editor
-    auto load_rom_file(c8::Chip8& chip, const std::filesystem::path& file) -> void;
+    auto load_rom_file(c8::Chip8& chip, c8::Debugger& debugger, const std::filesystem::path& file) -> void;
 
     // Dock the windows in the default layout
     auto build_default_layout(ImGuiID dockspace_id) -> void;
 
-    // Show the breakpoints of the CHIP-8 as markers in the code editor
-    auto update_breakpoint_markers(const c8::Chip8& chip) -> void;
+    // Show the breakpoints as markers in the code editor
+    auto update_breakpoint_markers(const c8::Chip8& chip, const c8::Debugger& debugger) -> void;
 
 
     // The SDL window
@@ -74,6 +91,22 @@ private:
 
     // The OpenGL context for the SDL window
     SDL_GLContext gl_context = {};
+
+    bool     frame_limit_enabled = true;
+    uint32_t frame_limit         = 60;
+
+    // The time of the next frame, for the frame limit (SDL_GetTicksNS)
+    Uint64 next_frame_ns = 0;
+
+    // The measured emulation speed
+    struct RateMeter {
+        Uint64   start_ns     = 0;
+        uint64_t start_cycles = 0;
+        uint64_t start_frames = 0;
+        double   ips          = 0.0;
+        double   fps          = 0.0;
+    };
+    RateMeter rate;
 
     // The CHIP-8 display texture, its scale, and its colors (RGBA)
     GLuint texture = 0;
