@@ -10,6 +10,7 @@
 #include <string_view>
 #include <vector>
 
+#include <imgui_internal.h>  // DockBuilder API
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_stdlib.h>
@@ -251,6 +252,14 @@ void MediaLayer::render_ui(chip8& chip) {
 
             ImGui::EndMenu();
         }
+
+        if (ImGui::BeginMenu("View")) {
+            if (ImGui::MenuItem("Reset Layout")) {
+                reset_layout = true;
+            }
+
+            ImGui::EndMenu();
+        }
 	}
 	ImGui::EndMainMenuBar();
 
@@ -258,7 +267,18 @@ void MediaLayer::render_ui(chip8& chip) {
     //----------------------------------------------------------------------------------
     // Invisible Root Docking Window
     //----------------------------------------------------------------------------------
-    ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
+    const ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
+
+    // imgui.ini restores the dock layout of the last session. Without a saved layout, use the default.
+    if (reset_layout || ImGui::DockBuilderGetNode(dockspace_id) == nullptr) {
+        build_default_layout(dockspace_id);
+
+        // The user can close the memory editor, so open it again
+        mem_editor.Open = true;
+        reset_layout = false;
+    }
+
+    ImGui::DockSpaceOverViewport(dockspace_id, ImGui::GetMainViewport());
 
 
     //----------------------------------------------------------------------------------
@@ -534,6 +554,36 @@ void MediaLayer::render_ui(chip8& chip) {
 	// Memory
 	//----------------------------------------------------------------------------------
 	mem_editor.DrawWindow("Memory", chip.memory.data(), chip.memory.size());
+}
+
+
+void MediaLayer::build_default_layout(ImGuiID dockspace_id) {
+    ImGui::DockBuilderRemoveNode(dockspace_id);
+    ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
+    ImGui::DockBuilderSetNodeSize(dockspace_id, ImGui::GetMainViewport()->WorkSize);
+
+    auto center = dockspace_id;
+    auto left   = ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.25f, nullptr, &center);
+    auto right  = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.35f, nullptr, &center);
+
+    auto left_bottom  = ImGuiID{};
+    auto left_top     = ImGui::DockBuilderSplitNode(left, ImGuiDir_Up, 0.4f, nullptr, &left_bottom);
+    auto registers    = ImGuiID{};
+    auto stack        = ImGui::DockBuilderSplitNode(left_bottom, ImGuiDir_Right, 0.35f, nullptr, &registers);
+    auto right_bottom = ImGuiID{};
+    auto right_top    = ImGui::DockBuilderSplitNode(right, ImGuiDir_Up, 0.6f, nullptr, &right_bottom);
+    auto center_bottom = ImGuiID{};
+    auto center_top    = ImGui::DockBuilderSplitNode(center, ImGuiDir_Up, 0.4f, nullptr, &center_bottom);
+
+    ImGui::DockBuilderDockWindow("Chip8 Settings", left_top);
+    ImGui::DockBuilderDockWindow("Registers", registers);
+    ImGui::DockBuilderDockWindow("Stack", stack);
+    ImGui::DockBuilderDockWindow("Display", center_top);
+    ImGui::DockBuilderDockWindow("Memory", center_bottom);
+    ImGui::DockBuilderDockWindow("Code Editor", right_top);
+    ImGui::DockBuilderDockWindow("Program", right_bottom);
+
+    ImGui::DockBuilderFinish(dockspace_id);
 }
 
 

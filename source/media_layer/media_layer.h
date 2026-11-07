@@ -53,6 +53,9 @@ private:
     auto end_frame() -> void;
     auto render_ui(chip8& chip) -> void;
 
+    // Dock the windows in the default layout
+    auto build_default_layout(ImGuiID dockspace_id) -> void;
+
     // Show the breakpoints of the CHIP-8 as markers in the code editor
     auto update_breakpoint_markers(const chip8& chip) -> void;
 
@@ -69,6 +72,9 @@ private:
 
     // CHIP-8 audio output
     Beeper beeper;
+
+    // When true, the next frame docks the windows in the default layout
+    bool reset_layout = false;
 
     // GUI widgets
     FileSelector file_selector;
