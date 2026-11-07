@@ -32,8 +32,11 @@ public:
         return paused;
     }
 
-    /// Resume execution
+    /// Resume execution. The instruction at the PC runs even if it has a breakpoint.
 	auto resume() noexcept -> void;
+
+    /// Run the instruction at the PC, even if it has a breakpoint. The pause state does not change.
+    auto step() -> void;
 
     /// Run a single cycle of the syystem
     auto run_cycle() -> void;
@@ -126,6 +129,10 @@ private:
 
     // Instruction numbers to pause execution at
     std::unordered_set<uint16_t> breakpoints;
+
+    // When true, the next cycle ignores a breakpoint. resume() and step() set it,
+    // so that execution can continue from a breakpoint.
+    bool skip_breakpoint = false;
 
 
     //--------------------------------------------------------------------------------

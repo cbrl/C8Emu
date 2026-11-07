@@ -404,7 +404,7 @@ void MediaLayer::render_ui(chip8& chip) {
             }
             ImGui::SameLine();
             if (ImGui::Button("Step")) {
-                chip.run_cycle();
+                chip.step();
             }
         }
         else {
@@ -505,8 +505,8 @@ void MediaLayer::render_ui(chip8& chip) {
             }
 
             if (ImGui::BeginMenu("Breakpoint")) {
-                // Breakpoints are 1-based line numbers. Editor lines are 0-based.
-                const auto cursor_line = static_cast<uint16_t>(text_editor.GetMainCursorPosition().line + 1);
+                // Each editor line holds one instruction. Line numbers and instruction numbers both start at 0.
+                const auto cursor_line = static_cast<uint16_t>(text_editor.GetMainCursorPosition().line);
 
                 if (ImGui::MenuItem("Add")) {
                     chip.add_breakpoint(cursor_line);
@@ -543,8 +543,8 @@ void MediaLayer::update_breakpoint_markers(const chip8& chip) {
     text_editor.ClearMarkers();
 
     for (const auto line : chip.get_breakpoints()) {
-        if (line > 0 && line <= text_editor.GetLineCount()) {
-            text_editor.AddMarker(static_cast<size_t>(line) - 1, breakpoint_color, breakpoint_color, "Breakpoint", "");
+        if (line < text_editor.GetLineCount()) {
+            text_editor.AddMarker(line, breakpoint_color, breakpoint_color, "Breakpoint", "");
         }
     }
 }

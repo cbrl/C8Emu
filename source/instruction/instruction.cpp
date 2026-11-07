@@ -366,9 +366,10 @@ auto decompile_program(std::span<const uint8_t> data) -> decompile_result {
         }
     }
 
-    // If there's an odd byte at the end, then write that out too.
-    if ((data.size() % 2) == 0) {
-        result.program.push_back(std::format("0x{:04X}", data.back()));
+    // If there's an odd byte at the end, then write that out too. Put it in the high byte,
+    // because the compiler writes the high byte first. Then the byte keeps its address.
+    if ((data.size() % 2) != 0) {
+        result.program.push_back(std::format("0x{:04X}", static_cast<uint16_t>(data.back() << 8)));
     }
 
     return result;

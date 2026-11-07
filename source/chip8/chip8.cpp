@@ -35,6 +35,7 @@ auto chip8::reset() -> void {
 	}
 
 	pause();
+	skip_breakpoint = false;
 }
 
 
@@ -46,7 +47,14 @@ auto chip8::pause() noexcept -> void {
 
 auto chip8::resume() noexcept -> void {
 	paused = false;
+	skip_breakpoint = true;
 	//timer.resume();
+}
+
+
+auto chip8::step() -> void {
+	skip_breakpoint = true;
+	run_cycle();
 }
 
 
@@ -55,10 +63,13 @@ auto chip8::run_cycle() -> void {
 	timer.tick();
 
 	if (pc < rom_end) {  //check that the PC is within the ROM's memory region
-		if (breakpoints.contains((pc - rom_start) / 2)) {
+		const auto instruction_number = static_cast<uint16_t>((pc - rom_start) / 2);
+
+		if (!skip_breakpoint && breakpoints.contains(instruction_number)) {
 			pause();
 		}
 		else {
+			skip_breakpoint = false;
 			ISA::execute_cycle(*this);
 		}
 	}
@@ -101,8 +112,8 @@ auto chip8::load_rom(const std::filesystem::path& file) -> bool {
 	current_rom = file;
 	rom_end = rom_start + file_size;
 
-	// Start emulation
-	resume();
+	// Start emulation. Do not call resume(), because it skips a breakpoint on the first instruction.
+	paused = false;
 
 	return true;
 }
@@ -131,7 +142,8 @@ auto chip8::load_rom(std::span<const uint16_t> rom_data) -> bool {
 	current_rom = std::filesystem::path{};
 	rom_end = rom_start + rom_data.size_bytes();
 
-	resume();
+	// Start emulation. Do not call resume(), because it skips a breakpoint on the first instruction.
+	paused = false;
 
 	return true;
 }

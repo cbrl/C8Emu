@@ -1,7 +1,6 @@
 #include <array>
 #include <cstdint>
 #include <optional>
-#include <span>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -28,10 +27,9 @@ TEST_CASE("decompiled programs compile to the same bytes", "[instruction]")
 
   const auto decompiled = decompile_program(bytes);
   REQUIRE(decompiled.failures.empty());
-  REQUIRE(decompiled.program.size() >= bytes.size() / 2);
+  REQUIRE(decompiled.program.size() == bytes.size() / 2);
 
-  const auto lines = std::span {decompiled.program}.first(bytes.size() / 2);
-  const auto compiled = compile_program(lines);
+  const auto compiled = compile_program(decompiled.program);
   REQUIRE(compiled.failures.empty());
 
   const auto expected = std::vector<uint16_t> {0x00E0, 0x612A, 0xA123, 0xD125, 0x1200};
