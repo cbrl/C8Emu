@@ -54,7 +54,8 @@ public:
      *
      * @details ImGui sees each event. A key press reaches the CHIP-8 only when
      *          ImGui does not use the keyboard (for example, when no text field
-     *          has focus). A key release always reaches it. Key repeats do not.
+     *          has focus), and only without Ctrl, Alt, or GUI. A key release
+     *          always reaches it. Key repeats do not.
      */
     [[nodiscard]]
     auto poll_events(const Keymap& keymap) -> PlatformEvents;

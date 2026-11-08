@@ -290,8 +290,10 @@ auto Platform::poll_events(const Keymap& keymap) -> PlatformEvents {
             case SDL_EVENT_KEY_UP: {
                 const bool down = (event.type == SDL_EVENT_KEY_DOWN);
 
-                // ImGui uses the keyboard while a text field or the code editor has focus
-                if (down && (event.key.repeat || ImGui::GetIO().WantCaptureKeyboard)) {
+                // ImGui uses the keyboard while a text field or the code editor has focus.
+                // A key with Ctrl, Alt, or GUI is a shortcut (for example, Ctrl+R), not CHIP-8 input.
+                constexpr auto shortcut_mods = static_cast<SDL_Keymod>(SDL_KMOD_CTRL | SDL_KMOD_ALT | SDL_KMOD_GUI);
+                if (down && (event.key.repeat || ImGui::GetIO().WantCaptureKeyboard || ((event.key.mod & shortcut_mods) != 0))) {
                     break;
                 }
 

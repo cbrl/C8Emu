@@ -17,7 +17,7 @@ namespace c8 {
 enum class StopReason : uint8_t {
     none,
     user,         ///< The user paused execution
-    step,         ///< A step completed
+    step,         ///< A step, a run to an address, or a frame advance completed
     breakpoint,   ///< The PC reached a breakpoint
     fault,        ///< An instruction faulted. StopEvent::fault has the details.
     left_program, ///< The PC left the loaded program
@@ -55,6 +55,12 @@ struct RunStats {
  *          PC leaves the program. Breakpoints are addresses, so odd addresses
  *          and addresses below the program work.
  *
+ *          step_over(), step_out(), run_to(), and frame_advance() do not run at
+ *          once. They run the machine with a goal, and run_frames() stops when
+ *          the machine reaches the goal. So these steps run at the normal speed,
+ *          and the timers count as in real time. A breakpoint or a fault stops a
+ *          step before its goal.
+ *
  *          The debugger keeps a reference to the machine. The machine must
  *          outlive the debugger.
  */
@@ -77,6 +83,12 @@ public:
     /// Reset the machine and run the program again. A breakpoint at the origin stops it at once.
     auto reset() -> void;
 
+    /// True if the machine has a program. Without a program, the run controls do nothing.
+    [[nodiscard]]
+    auto has_program() const noexcept -> bool {
+        return !chip.program().empty();
+    }
+
 
     //--------------------------------------------------------------------------------
     // Run control
@@ -98,6 +110,25 @@ public:
     auto step_into() noexcept -> void;
 
     /**
+     * @brief Run until the instruction after the one at the PC
+     *
+     * @details For 2NNN (call) and FX0A (key wait), the machine runs until the
+     *          PC reaches the next instruction at the same stack depth, or
+     *          until the stack is less deep than now. For other instructions,
+     *          this is step_into().
+     */
+    auto step_over() noexcept -> void;
+
+    /// Run until the current subroutine returns. At stack depth 0, nothing happens.
+    auto step_out() noexcept -> void;
+
+    /// Run until the PC reaches an address. If the PC is at the address now, the instruction runs first.
+    auto run_to(uint16_t address) noexcept -> void;
+
+    /// Run to the end of the current frame, then pause
+    auto frame_advance() noexcept -> void;
+
+    /**
      * @brief Run frames until a stop or a deadline
      *
      * @details The call does nothing while execution is paused. The deadline
@@ -109,9 +140,16 @@ public:
      */
     auto run_frames(uint32_t frames, clock::time_point deadline) noexcept -> RunStats;
 
+    /// True while the machine runs, also during a step that runs toward a goal
     [[nodiscard]]
     auto is_running() const noexcept -> bool {
         return running;
+    }
+
+    /// True while step_over(), step_out(), run_to(), or frame_advance() runs toward its goal
+    [[nodiscard]]
+    auto is_stepping() const noexcept -> bool {
+        return running && (goal.kind != GoalKind::none);
     }
 
     /// Why execution stopped. StopReason::none while running.
@@ -175,8 +213,26 @@ public:
     }
 
 private:
+    // Where a step that runs at normal speed stops
+    enum class GoalKind : uint8_t {
+        none,
+        return_to,   // The PC is goal.pc at stack depth goal.sp, or the stack is less deep than goal.sp
+        leave_frame, // The stack is less deep than goal.sp
+        address,     // The PC is goal.pc
+        frame_end,   // A frame ended
+    };
+
+    struct Goal {
+        GoalKind kind = GoalKind::none;
+        uint16_t pc   = 0;
+        uint8_t  sp   = 0;
+    };
+
     // Clear the stop state after a load or a reset, and run if a program exists
     auto start() noexcept -> void;
+
+    // Run until the machine reaches a goal
+    auto run_until(const Goal& target) noexcept -> void;
 
     // The reason to stop before the next cycle, if one exists
     [[nodiscard]]
@@ -190,7 +246,11 @@ private:
     bool leave_program_stops = true;
 
     bool running = false;
-    bool skip_breakpoint = false;
+
+    // No instruction ran since execution resumed, so a breakpoint or an address goal at the PC does not stop it
+    bool skip_stops_at_pc = false;
+
+    Goal goal;
     StopEvent stop_event{};
     std::optional<StopEvent> unread_stop;
 };

@@ -4,7 +4,7 @@
 
 namespace c8 {
 
-/// The V registers, I, and the PC. Each value can be edited.
+/// The registers and the timers (each value can be edited), the keypad state, and the frame counters
 class RegistersPanel final : public Panel {
 public:
     [[nodiscard]]

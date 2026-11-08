@@ -1,16 +1,131 @@
 #include "memory_panel.h"
 
 #include "chip8/chip8.h"
+#include "debugger/debugger.h"
 
 namespace c8 {
 
-auto MemoryPanel::draw(UiContext& context) -> void {
-    auto& memory = context.chip.state().memory;
+namespace {
 
-    // The editor draws its own window, and its close button clears Open
-    editor.Open = true;
-    editor.DrawWindow(title(), memory.data(), memory.size());
-    open = editor.Open;
+constexpr ImU32 pc_color         = IM_COL32(255, 200, 0, 120);
+constexpr ImU32 breakpoint_color = IM_COL32(255, 64, 64, 120);
+constexpr ImU32 i_color          = IM_COL32(64, 160, 255, 120);
+constexpr ImU32 program_color    = IM_COL32(255, 255, 255, 20);
+constexpr ImU32 font_color       = IM_COL32(120, 255, 120, 30);
+
+// 16 digit sprites, 5 bytes each
+constexpr size_t font_size = 16 * 5;
+
+
+// A colored square and a label, for the legend
+auto legend_item(ImU32 color, const char* label) -> void {
+    const float size = ImGui::GetTextLineHeight();
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+
+    ImGui::GetWindowDrawList()->AddRectFilled(pos, {pos.x + size, pos.y + size}, color);
+    ImGui::Dummy({size, size});
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+    ImGui::TextUnformatted(label);
+}
+
+} // namespace
+
+
+MemoryPanel::MemoryPanel() {
+    editor.BgColorFn = &MemoryPanel::background_color;
+    editor.UserData = &colors;
+}
+
+
+auto MemoryPanel::draw(UiContext& context) -> void {
+    if (!ImGui::Begin(title(), &open)) {
+        ImGui::End();
+        return;
+    }
+
+    auto& state = context.chip.state();
+
+    if (ImGui::Button("Go to PC")) {
+        go_to(state.pc);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Go to I")) {
+        go_to(state.i & state.mask());
+    }
+
+    ImGui::SameLine();
+    ImGui::Spacing();
+    ImGui::SameLine();
+    legend_item(pc_color, "PC");
+    ImGui::SameLine();
+    legend_item(i_color, "I");
+    ImGui::SameLine();
+    legend_item(breakpoint_color, "Breakpoint");
+    ImGui::SameLine();
+    legend_item(program_color, "Program");
+    ImGui::SameLine();
+    legend_item(font_color, "Font");
+
+    colors = ColorSource{
+        .state         = &state,
+        .debugger      = &context.debugger,
+        .program_begin = context.chip.program_origin(),
+        .program_end   = context.chip.program_end(),
+    };
+
+    editor.DrawContents(state.memory.data(), state.memory.size());
+
+    if (jumped) {
+        // A jump also selects the byte for editing, and the edit field takes the keyboard.
+        // Only scroll, so the CHIP-8 keys keep working.
+        editor.DataEditingAddr = static_cast<size_t>(-1);
+        editor.DataEditingTakeFocus = false;
+        jumped = false;
+    }
+
+    ImGui::End();
+}
+
+
+auto MemoryPanel::background_color(const ImU8* /*memory*/, size_t address, void* user_data) -> ImU32 {
+    const auto& source = *static_cast<const ColorSource*>(user_data);
+    if (source.state == nullptr) {
+        return 0;
+    }
+
+    const auto& state = *source.state;
+
+    // An instruction is two bytes, so mark both bytes of the PC and of each breakpoint
+    if ((address == state.pc) || (address == ((state.pc + 1u) & state.mask()))) {
+        return pc_color;
+    }
+
+    const auto& breakpoints = source.debugger->breakpoints();
+    const auto previous = static_cast<uint16_t>((address - 1) & state.mask());
+    if (breakpoints.contains(static_cast<uint16_t>(address)) || breakpoints.contains(previous)) {
+        return breakpoint_color;
+    }
+
+    if (address == (state.i & state.mask())) {
+        return i_color;
+    }
+
+    // An address below the font wraps to a large offset
+    if ((address - MachineState::font_address) < font_size) {
+        return font_color;
+    }
+
+    if ((address >= source.program_begin) && (address < source.program_end)) {
+        return program_color;
+    }
+
+    return 0;
+}
+
+
+auto MemoryPanel::go_to(size_t address) -> void {
+    editor.GotoAddr = address;
+    jumped = true;
 }
 
 } // namespace c8

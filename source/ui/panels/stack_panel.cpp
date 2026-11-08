@@ -34,7 +34,7 @@ auto StackPanel::draw(UiContext& context) -> void {
 
             ImGui::SetNextItemWidth(ImGui::CalcTextSize(value_str.c_str()).x);
             if (ImGui::InputText("##stack", &value_str, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
-                entry = str_to<uint16_t>(value_str, 16).value_or(entry);
+                entry = parse_hex<uint16_t>(value_str).value_or(entry);
             }
             ImGui::PopID();
         }

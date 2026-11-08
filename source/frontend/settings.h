@@ -16,6 +16,10 @@ struct Settings {
     static constexpr uint32_t min_frame_limit = 30;
     static constexpr uint32_t max_frame_limit = 1000;
 
+    // While the turbo key is held, the emulation runs this many times faster
+    static constexpr uint32_t min_turbo_factor = 2;
+    static constexpr uint32_t max_turbo_factor = 16;
+
     uint32_t display_scale    = 10;         ///< The size of a CHIP-8 pixel in screen pixels
     uint32_t background_color = 0x000000FF; ///< RGBA
     uint32_t foreground_color = 0xFFFFFFFF; ///< RGBA
@@ -26,10 +30,13 @@ struct Settings {
     float volume = 0.5f;                    ///< [0, 1]
     bool  muted  = false;
 
+    uint32_t turbo_factor = 4;              ///< The speed multiplier while the turbo key is held
+
     /// Clamp each value to its range
     auto clamp() noexcept -> void {
         display_scale = std::clamp(display_scale, min_display_scale, max_display_scale);
         frame_limit   = std::clamp(frame_limit, min_frame_limit, max_frame_limit);
+        turbo_factor  = std::clamp(turbo_factor, min_turbo_factor, max_turbo_factor);
         volume        = (volume > 0.0f) ? std::min(volume, 1.0f) : 0.0f;
     }
 };

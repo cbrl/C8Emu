@@ -50,7 +50,7 @@ auto Debugger::run() noexcept -> void {
     }
 
     running = true;
-    skip_breakpoint = true;
+    skip_stops_at_pc = true;
     stop_event = {};
 }
 
@@ -68,6 +68,7 @@ auto Debugger::step_into() noexcept -> void {
     }
 
     running = false;
+    goal = {};
 
     // A pending vertical blank takes one idle cycle. Then one instruction runs.
     for (int attempt = 0; attempt < 2; ++attempt) {
@@ -86,8 +87,50 @@ auto Debugger::step_into() noexcept -> void {
         }
     }
 
-    skip_breakpoint = false;
+    skip_stops_at_pc = false;
     stop({.reason = StopReason::step, .pc = chip.state().pc});
+}
+
+
+auto Debugger::step_over() noexcept -> void {
+    if (chip.program().empty()) {
+        return;
+    }
+
+    const auto& state = chip.state();
+    const uint16_t opcode = state.read_word(state.pc);
+
+    const bool is_call     = (opcode & 0xF000) == 0x2000; // 2NNN
+    const bool is_key_wait = (opcode & 0xF0FF) == 0xF00A; // FX0A
+
+    if (!is_call && !is_key_wait) {
+        step_into();
+        return;
+    }
+
+    run_until({
+        .kind = GoalKind::return_to,
+        .pc   = static_cast<uint16_t>((state.pc + 2) & state.mask()),
+        .sp   = state.sp,
+    });
+}
+
+
+auto Debugger::step_out() noexcept -> void {
+    if (chip.state().sp == 0) {
+        return;
+    }
+    run_until({.kind = GoalKind::leave_frame, .sp = chip.state().sp});
+}
+
+
+auto Debugger::run_to(uint16_t address) noexcept -> void {
+    run_until({.kind = GoalKind::address, .pc = address});
+}
+
+
+auto Debugger::frame_advance() noexcept -> void {
+    run_until({.kind = GoalKind::frame_end});
 }
 
 
@@ -112,13 +155,18 @@ auto Debugger::run_frames(uint32_t frames, clock::time_point deadline) noexcept 
 
         if (result.executed) {
             ++stats.instructions;
-            skip_breakpoint = false;
+            skip_stops_at_pc = false;
         }
 
         bool check_clock = false;
         if (result.frame_end) {
             ++stats.frames;
             check_clock = true;
+
+            if (goal.kind == GoalKind::frame_end) {
+                stop({.reason = StopReason::step, .pc = chip.state().pc});
+                break;
+            }
         }
         if (--until_clock_check == 0) {
             check_clock = true;
@@ -154,8 +202,21 @@ auto Debugger::toggle_breakpoint(uint16_t address) -> bool {
 auto Debugger::start() noexcept -> void {
     stop_event = {};
     unread_stop.reset();
-    skip_breakpoint = false;
+    skip_stops_at_pc = false;
+    goal = {};
     running = !chip.program().empty();
+}
+
+
+auto Debugger::run_until(const Goal& target) noexcept -> void {
+    if (chip.program().empty()) {
+        return;
+    }
+
+    running = true;
+    skip_stops_at_pc = true;
+    stop_event = {};
+    goal = target;
 }
 
 
@@ -178,8 +239,35 @@ auto Debugger::check_stop(bool use_breakpoints) const noexcept -> std::optional<
         return StopEvent{.reason = StopReason::left_program, .pc = pc};
     }
 
-    if (use_breakpoints && !skip_breakpoint && breakpoint_set.contains(pc)) {
+    if (use_breakpoints && !skip_stops_at_pc && breakpoint_set.contains(pc)) {
         return StopEvent{.reason = StopReason::breakpoint, .pc = pc};
+    }
+
+    const auto reached_goal = StopEvent{.reason = StopReason::step, .pc = pc};
+
+    switch (goal.kind) {
+        case GoalKind::return_to: {
+            if ((state.sp < goal.sp) || ((state.sp == goal.sp) && (pc == goal.pc))) {
+                return reached_goal;
+            }
+            break;
+        }
+        case GoalKind::leave_frame: {
+            if (state.sp < goal.sp) {
+                return reached_goal;
+            }
+            break;
+        }
+        case GoalKind::address: {
+            if (!skip_stops_at_pc && (pc == goal.pc)) {
+                return reached_goal;
+            }
+            break;
+        }
+        case GoalKind::none:
+        case GoalKind::frame_end: {
+            break;
+        }
     }
 
     return std::nullopt;
@@ -188,6 +276,7 @@ auto Debugger::check_stop(bool use_breakpoints) const noexcept -> std::optional<
 
 auto Debugger::stop(const StopEvent& event) noexcept -> void {
     running = false;
+    goal = {};
     stop_event = event;
     unread_stop = event;
 }

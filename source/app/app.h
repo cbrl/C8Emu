@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/commands.h"
 #include "app/session.h"
 #include "chip8/chip8.h"
 #include "debugger/debugger.h"
@@ -39,8 +40,8 @@ private:
     // Write each stop of execution to the log
     auto log_stop_events() -> void;
 
-    // Do the actions that the UI requested in this frame
-    auto handle_requests(const UiRequests& requests) -> void;
+    // Do a command from a menu, a button, or a shortcut
+    auto execute(Command command) -> void;
 
     Settings settings;
     Keymap keymap = default_keymap();
@@ -62,6 +63,10 @@ private:
 
     // Emulated frames that are due but did not run yet
     double backlog = 0.0;
+
+    // The turbo key was held in the last frame
+    bool turbo = false;
+
     bool quit = false;
 };
 

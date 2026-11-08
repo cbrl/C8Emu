@@ -96,6 +96,26 @@ auto str_to(std::string_view str) noexcept -> std::optional<T> {
 	return std::nullopt;
 }
 
+// Convert a hexadecimal string to the specified integral type. The string can have
+// a "0x" or "0X" prefix, and spaces or tabs at each end.
+template<std::integral T> requires (!std::same_as<T, bool>)
+auto parse_hex(std::string_view str) noexcept -> std::optional<T> {
+	const auto is_blank = [](char c) { return (c == ' ') || (c == '\t'); };
+
+	while (!str.empty() && is_blank(str.front())) {
+		str.remove_prefix(1);
+	}
+	while (!str.empty() && is_blank(str.back())) {
+		str.remove_suffix(1);
+	}
+
+	if ((str.size() >= 2) && (str[0] == '0') && ((str[1] == 'x') || (str[1] == 'X'))) {
+		str.remove_prefix(2);
+	}
+
+	return str_to<T>(str, 16);
+}
+
 
 //----------------------------------------------------------------------------------
 // Trim

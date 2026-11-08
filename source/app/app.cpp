@@ -55,7 +55,13 @@ auto App::run() -> void {
         rate_meter.update(chip.state(), RateMeter::clock::now());
         display_texture.update(chip.state().display, settings.foreground_color, settings.background_color);
 
+        platform.begin_frame();
+
+        // The shortcuts and the turbo key need the key state of this ImGui frame
         auto requests = UiRequests{};
+        poll_shortcuts(requests.commands);
+        turbo = poll_turbo();
+
         auto context = UiContext{
             .chip            = chip,
             .debugger        = debugger,
@@ -63,14 +69,16 @@ auto App::run() -> void {
             .settings        = settings,
             .rate            = rate_meter.rate(),
             .display_texture = static_cast<ImTextureID>(display_texture.id()),
+            .turbo_active    = turbo,
             .requests        = requests,
         };
 
-        platform.begin_frame();
         ui.draw(context);
         platform.end_frame();
 
-        handle_requests(requests);
+        for (const auto command : requests.commands) {
+            execute(command);
+        }
         platform.limit_frame_rate(settings.frame_limit_enabled, settings.frame_limit);
     }
 }
@@ -124,8 +132,11 @@ auto App::emulate(double seconds) -> void {
     const auto frames = static_cast<uint32_t>(backlog);
     backlog -= frames;
 
+    // Turbo runs more frames in the same time. The budget still limits the work.
+    const uint32_t speed = turbo ? settings.turbo_factor : 1;
+
     if (frames > 0) {
-        (void)debugger.run_frames(frames, Debugger::clock::now() + emulation_budget);
+        (void)debugger.run_frames(frames * speed, Debugger::clock::now() + emulation_budget);
     }
 }
 
@@ -155,13 +166,50 @@ auto App::log_stop_events() -> void {
 }
 
 
-auto App::handle_requests(const UiRequests& requests) -> void {
-    if (requests.open_rom) {
-        open_rom_dialog();
+auto App::execute(Command command) -> void {
+    // A shortcut can request a command that the menu shows as disabled
+    if (!is_enabled(command, debugger)) {
+        return;
     }
 
-    if (requests.quit) {
-        quit = true;
+    switch (command) {
+        case Command::open_rom: {
+            open_rom_dialog();
+            break;
+        }
+        case Command::quit: {
+            quit = true;
+            break;
+        }
+        case Command::reset: {
+            session.reset();
+            break;
+        }
+        case Command::run_pause: {
+            if (debugger.is_running()) {
+                debugger.pause();
+            }
+            else {
+                debugger.run();
+            }
+            break;
+        }
+        case Command::step_into: {
+            debugger.step_into();
+            break;
+        }
+        case Command::step_over: {
+            debugger.step_over();
+            break;
+        }
+        case Command::step_out: {
+            debugger.step_out();
+            break;
+        }
+        case Command::frame_advance: {
+            debugger.frame_advance();
+            break;
+        }
     }
 }
 

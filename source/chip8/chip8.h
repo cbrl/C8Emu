@@ -152,6 +152,12 @@ public:
     /// Set the cycles in each frame. The value is clamped to [min_instructions_per_frame, max_instructions_per_frame].
     auto set_instructions_per_frame(uint32_t count) noexcept -> void;
 
+    /// Use the quirks and the instructions per frame of a preset
+    auto apply_preset(const Preset& preset) noexcept -> void {
+        quirk_set = preset.quirks;
+        set_instructions_per_frame(preset.instructions_per_frame);
+    }
+
     /**
      * @brief Set the seed of the CXNN random number generator
      *

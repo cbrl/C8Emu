@@ -51,14 +51,18 @@ add_executable(
     c8emu_exe
     source/main.cpp
     source/app/app.cpp
+    source/app/commands.cpp
     source/app/session.cpp
     source/platform/beeper.cpp
     source/platform/display_texture.cpp
     source/platform/file_dialogs.cpp
     source/platform/platform.cpp
+    source/ui/command_ui.cpp
     source/ui/dock_layout.cpp
     source/ui/main_menu.cpp
+    source/ui/status_bar.cpp
     source/ui/ui.cpp
+    source/ui/panels/breakpoints_panel.cpp
     source/ui/panels/display_panel.cpp
     source/ui/panels/editor_panel.cpp
     source/ui/panels/log_panel.cpp

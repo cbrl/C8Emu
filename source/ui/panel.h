@@ -1,6 +1,10 @@
 #pragma once
 
+#include <vector>
+
 #include <imgui.h>
+
+#include "app/commands.h"
 
 namespace c8 {
 
@@ -12,8 +16,11 @@ struct Settings;
 
 /// Requests from the UI that the app handles after the frame
 struct UiRequests {
-    bool open_rom = false; ///< Show the dialog to open a ROM
-    bool quit     = false; ///< End the application
+    std::vector<Command> commands; ///< Oldest first
+
+    auto push(Command command) -> void {
+        commands.push_back(command);
+    }
 };
 
 /// What the panels can see and change
@@ -24,6 +31,7 @@ struct UiContext {
     Settings&            settings;
     const EmulationRate& rate;
     ImTextureID          display_texture;
+    bool                 turbo_active; ///< The turbo key is held
     UiRequests&          requests;
 };
 
