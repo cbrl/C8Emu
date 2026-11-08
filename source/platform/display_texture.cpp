@@ -7,6 +7,9 @@ namespace c8 {
 DisplayTexture::DisplayTexture() {
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
+
+    // The ImGui backend binds its own sampler, which overrides these filters. The display panel selects
+    // the nearest sampler. These values only apply when no sampler is bound.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);

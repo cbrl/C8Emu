@@ -13,7 +13,19 @@ auto DisplayPanel::draw(UiContext& context) -> void {
         const auto padding = ImGui::GetStyle().WindowPadding;
 
         ImGui::BeginChild("Image", {size.x + (padding.x * 2.0f), size.y + (padding.y * 2.0f)}, ImGuiChildFlags_Borders);
+
+        // The OpenGL3 backend binds a linear sampler object, which overrides the filter of the texture.
+        // Select the nearest sampler for the image, then go back to the default.
+        const auto& platform_io = ImGui::GetPlatformIO();
+        auto* draw_list = ImGui::GetWindowDrawList();
+        if (platform_io.DrawCallback_SetSamplerNearest != nullptr) {
+            draw_list->AddCallback(platform_io.DrawCallback_SetSamplerNearest);
+        }
         ImGui::Image(context.display_texture, size);
+        if (platform_io.DrawCallback_SetSamplerLinear != nullptr) {
+            draw_list->AddCallback(platform_io.DrawCallback_SetSamplerLinear);
+        }
+
         ImGui::EndChild();
     }
     ImGui::End();
