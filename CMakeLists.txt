@@ -22,9 +22,12 @@ add_library(
     source/chip8/chip8.cpp
     source/chip8/quirks.cpp
     source/chip8/isa/isa.cpp
+    source/audio/tone_generator.cpp
+    source/debugger/debugger.cpp
     source/frontend/rom_files.cpp
     source/instruction/instruction.cpp
     source/instruction/opcodes.cpp
+    source/util/log.cpp
 )
 
 target_include_directories(
@@ -41,15 +44,29 @@ find_package(glad CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(imgui-color-text-edit CONFIG REQUIRED)
 find_package(imgui-memory-editor CONFIG REQUIRED)
+find_package(nfd CONFIG REQUIRED)
 find_package(SDL3 CONFIG REQUIRED)
 
 add_executable(
     c8emu_exe
     source/main.cpp
-    source/emulator/chip8_emulator.cpp
-    source/media_layer/media_layer.cpp
-    source/media_layer/beeper/beeper.cpp
-    source/media_layer/gui_widgets/file_selector.cpp
+    source/app/app.cpp
+    source/app/session.cpp
+    source/platform/beeper.cpp
+    source/platform/display_texture.cpp
+    source/platform/file_dialogs.cpp
+    source/platform/platform.cpp
+    source/ui/dock_layout.cpp
+    source/ui/main_menu.cpp
+    source/ui/ui.cpp
+    source/ui/panels/display_panel.cpp
+    source/ui/panels/editor_panel.cpp
+    source/ui/panels/log_panel.cpp
+    source/ui/panels/memory_panel.cpp
+    source/ui/panels/program_panel.cpp
+    source/ui/panels/registers_panel.cpp
+    source/ui/panels/settings_panel.cpp
+    source/ui/panels/stack_panel.cpp
 )
 add_executable(c8emu::exe ALIAS c8emu_exe)
 
@@ -64,6 +81,7 @@ target_link_libraries(
     imgui::imgui
     imgui-color-text-edit::imgui-color-text-edit
     imgui-memory-editor::imgui-memory-editor
+    nfd::nfd
     SDL3::SDL3
 )
 

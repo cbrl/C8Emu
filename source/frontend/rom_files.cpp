@@ -12,6 +12,12 @@ auto path_to_utf8(const std::filesystem::path& path) -> std::string {
 }
 
 
+auto path_from_utf8(std::string_view text) -> std::filesystem::path {
+    const auto utf8 = std::u8string{reinterpret_cast<const char8_t*>(text.data()), text.size()};
+    return std::filesystem::path{utf8};
+}
+
+
 auto read_rom_file(const std::filesystem::path& file, size_t max_size) -> std::expected<std::vector<uint8_t>, std::string> {
     const auto name = path_to_utf8(file);
     auto ec = std::error_code{};

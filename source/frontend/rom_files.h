@@ -5,6 +5,7 @@
 #include <expected>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace c8 {
@@ -12,6 +13,10 @@ namespace c8 {
 /// Convert a path to UTF-8 text for messages. This never throws on Windows paths.
 [[nodiscard]]
 auto path_to_utf8(const std::filesystem::path& path) -> std::string;
+
+/// Convert UTF-8 text (for example a path from SDL) to a path
+[[nodiscard]]
+auto path_from_utf8(std::string_view text) -> std::filesystem::path;
 
 /**
  * @brief Read a ROM file into memory

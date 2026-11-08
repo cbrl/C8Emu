@@ -1,18 +1,25 @@
-#include "emulator/chip8_emulator.h"
-#include <string>
-#include <vector>
+#include <exception>
+#include <memory>
 
-int main(int argc, char** argv) {
-    // Turn args into a vector of strings for simplicity
-    //const auto args = std::vector<std::string>(argv, argv + argc);
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
-    auto emulator = Chip8Emulator{};
+#include "app/app.h"
 
-    // if (!emulator.load_rom("roms/demos/Particle Demo [zeroZshadow, 2008].ch8")) {
-    //     return 1;
-    // }
-
-    emulator.run();
+int main(int /*argc*/, char* /*argv*/[]) {
+    try {
+        const auto app = std::make_unique<c8::App>();
+        app->run();
+    }
+    catch (const std::exception& e) {
+        // A message box works without SDL_Init, so it also reports a failed start
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "C8Emu", e.what(), nullptr);
+        return 1;
+    }
+    catch (...) {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "C8Emu", "An unknown error occurred.", nullptr);
+        return 1;
+    }
 
     return 0;
 }
