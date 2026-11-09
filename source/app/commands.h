@@ -20,6 +20,8 @@ enum class Command : uint8_t {
     step_over,
     step_out,
     frame_advance,
+    toggle_breakpoint, ///< Toggle the breakpoint of the cursor line in the code editor
+    run_to_cursor,     ///< Run until the PC reaches the cursor line in the code editor
 
     // The assembly source in the code editor
     new_source,

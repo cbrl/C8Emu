@@ -28,7 +28,9 @@ add_library(
     source/chip8/quirks.cpp
     source/chip8/isa/isa.cpp
     source/audio/tone_generator.cpp
+    source/debugger/breakpoint_remap.cpp
     source/debugger/debugger.cpp
+    source/debugger/line_tracker.cpp
     source/frontend/rom_files.cpp
     source/util/log.cpp
 )

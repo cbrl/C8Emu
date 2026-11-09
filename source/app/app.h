@@ -52,8 +52,11 @@ private:
     // Assemble the source text, then ask for a file and write the program to it
     auto export_rom_dialog() -> void;
 
-    // Assemble the source text and load the program if it has no errors
+    // Assemble the source text and load the program if it has no errors. The breakpoints move with their lines.
     auto assemble_and_load() -> void;
+
+    // The program bytes of the cursor line in the code editor. Logs the reason if the line has none.
+    auto cursor_line_bytes() -> std::optional<LineBytes>;
 
     // Assemble the source text and write a summary of the problems to the log
     auto check_source() -> void;

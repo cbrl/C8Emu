@@ -199,6 +199,30 @@ auto Debugger::toggle_breakpoint(uint16_t address) -> bool {
 }
 
 
+auto Debugger::has_breakpoint_in(uint16_t address, uint16_t size) const -> bool {
+    const auto first = breakpoint_set.lower_bound(address);
+    return (first != breakpoint_set.end()) && (*first < (uint32_t{address} + size));
+}
+
+
+auto Debugger::toggle_breakpoint_in(uint16_t address, uint16_t size) -> bool {
+    const uint32_t end = uint32_t{address} + size;
+    bool removed = false;
+
+    auto it = breakpoint_set.lower_bound(address);
+    while ((it != breakpoint_set.end()) && (*it < end)) {
+        it = breakpoint_set.erase(it);
+        removed = true;
+    }
+
+    if (removed) {
+        return false;
+    }
+    breakpoint_set.insert(address);
+    return true;
+}
+
+
 auto Debugger::start() noexcept -> void {
     stop_event = {};
     unread_stop.reset();

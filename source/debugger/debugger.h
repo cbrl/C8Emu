@@ -207,6 +207,20 @@ public:
         return breakpoint_set.contains(address);
     }
 
+    /// True if a breakpoint is in [address, address + size), for example in the bytes of one source line
+    [[nodiscard]]
+    auto has_breakpoint_in(uint16_t address, uint16_t size) const -> bool;
+
+    /**
+     * @brief Toggle the breakpoint of a range, for example the bytes of one source line
+     *
+     * @details If breakpoints exist in [address, address + size), all of them
+     *          are removed. If not, a breakpoint is added at the address.
+     *
+     * @return True if a breakpoint now exists
+     */
+    auto toggle_breakpoint_in(uint16_t address, uint16_t size) -> bool;
+
     [[nodiscard]]
     auto breakpoints() const noexcept -> const std::set<uint16_t>& {
         return breakpoint_set;

@@ -23,6 +23,8 @@ constexpr auto bindings = std::array{
     Binding{Command::step_over,         ImGuiKey_F10,                                ImGuiInputFlags_Repeat},
     Binding{Command::step_into,         ImGuiKey_F11,                                ImGuiInputFlags_Repeat},
     Binding{Command::step_out,          ImGuiMod_Shift | ImGuiKey_F11,               ImGuiInputFlags_None},
+    Binding{Command::toggle_breakpoint, ImGuiKey_F9,                                 ImGuiInputFlags_None},
+    Binding{Command::run_to_cursor,     ImGuiMod_Ctrl | ImGuiKey_F10,                ImGuiInputFlags_None},
     Binding{Command::reset,             ImGuiMod_Ctrl | ImGuiKey_R,                  ImGuiInputFlags_None},
     Binding{Command::assemble_and_load, ImGuiMod_Ctrl | ImGuiKey_B,                  ImGuiInputFlags_None},
     Binding{Command::save_source,       ImGuiMod_Ctrl | ImGuiKey_S,                  ImGuiInputFlags_None},
@@ -80,6 +82,7 @@ auto is_enabled(Command command, const Debugger& debugger) noexcept -> bool {
         case Command::export_rom:
         case Command::assemble_and_load:
         case Command::check_source:
+        case Command::toggle_breakpoint:
         case Command::prompt_save:
         case Command::prompt_discard:
         case Command::prompt_cancel: {
@@ -88,6 +91,7 @@ auto is_enabled(Command command, const Debugger& debugger) noexcept -> bool {
         case Command::reset:
         case Command::run_pause:
         case Command::frame_advance:
+        case Command::run_to_cursor:
         case Command::disassemble: {
             return has_program;
         }

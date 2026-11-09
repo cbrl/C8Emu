@@ -1,6 +1,7 @@
 #include "app.h"
 
 #include "assembler/disassembler.h"
+#include "debugger/breakpoint_remap.h"
 #include "frontend/rom_files.h"
 #include "util/log.h"
 
@@ -234,9 +235,31 @@ auto App::assemble_and_load() -> void {
         log_warning("The assembly has {}. The Code Editor lists them.", count_of(result.warning_count(), "warning"));
     }
 
-    if (session.load_assembled(result.image, document.display_name())) {
-        document.mark_loaded();
+    // The breakpoints move with their lines to the new addresses
+    const auto remapped = remap_breakpoints(debugger.breakpoints(), document.lines(), result.map);
+
+    if (!session.load_assembled(result.image, document.display_name())) {
+        return;
     }
+
+    debugger.replace_breakpoints(remapped.breakpoints);
+    for (const auto address : remapped.dropped) {
+        log_warning("Removed the breakpoint at 0x{:03X}: its line was deleted or writes no bytes now", address);
+    }
+
+    document.mark_loaded();
+}
+
+
+auto App::cursor_line_bytes() -> std::optional<LineBytes> {
+    const auto line = document.editor().GetMainCursorPosition().line;
+
+    auto bytes = document.bytes_of_line(line);
+    if (!bytes) {
+        log_warning("Code Editor line {}: {}", line + 1, bytes.error());
+        return std::nullopt;
+    }
+    return *bytes;
 }
 
 
@@ -311,6 +334,9 @@ auto App::log_stop_events() -> void {
         return;
     }
 
+    // Show where the program stopped
+    document.reveal(event->pc);
+
     const auto message = describe(*event);
 
     switch (event->reason) {
@@ -382,6 +408,18 @@ auto App::perform(Command command) -> void {
         }
         case Command::frame_advance: {
             debugger.frame_advance();
+            break;
+        }
+        case Command::toggle_breakpoint: {
+            if (const auto bytes = cursor_line_bytes()) {
+                (void)debugger.toggle_breakpoint_in(bytes->address, bytes->size);
+            }
+            break;
+        }
+        case Command::run_to_cursor: {
+            if (const auto bytes = cursor_line_bytes()) {
+                debugger.run_to(bytes->address);
+            }
             break;
         }
         case Command::new_source: {

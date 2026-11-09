@@ -44,6 +44,12 @@ auto draw_debug_menu(UiContext& context) -> void {
     command_menu_item(context, "Step Into", Command::step_into);
     command_menu_item(context, "Step Over", Command::step_over);
     command_menu_item(context, "Step Out", Command::step_out);
+    command_menu_item(context, "Run to Cursor", Command::run_to_cursor);
+    ImGui::SetItemTooltip("Run until the PC reaches the cursor line in the Code Editor");
+
+    ImGui::Separator();
+    command_menu_item(context, "Toggle Breakpoint", Command::toggle_breakpoint);
+    ImGui::SetItemTooltip("Toggle the breakpoint of the cursor line in the Code Editor");
 
     ImGui::Separator();
     command_menu_item(context, "Reset", Command::reset);

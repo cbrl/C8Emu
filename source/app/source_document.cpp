@@ -6,6 +6,7 @@
 #include <format>
 #include <map>
 #include <utility>
+#include <vector>
 
 namespace c8 {
 
@@ -21,7 +22,7 @@ constexpr ImU32 error_color        = IM_COL32(255, 70, 70, 255);
 constexpr ImU32 warning_color      = IM_COL32(230, 180, 40, 255);
 constexpr ImU32 error_line_color   = IM_COL32(255, 60, 60, 40);
 constexpr ImU32 warning_line_color = IM_COL32(230, 180, 40, 30);
-constexpr ImU32 breakpoint_color   = IM_COL32(200, 40, 40, 255);
+constexpr ImU32 pc_line_color      = IM_COL32(255, 200, 0, 60);
 
 } // namespace
 
@@ -29,6 +30,7 @@ constexpr ImU32 breakpoint_color   = IM_COL32(200, 40, 40, 255);
 SourceDocument::SourceDocument() {
     text_editor.SetLanguage(chip8_language());
     text_editor.SetChangeCallback([this] { (void)check(); }, check_delay_ms);
+    text_editor.SetTransactionCallback([this](const std::vector<TextEditor::Change>&) { text_changed(); });
     (void)check();
 }
 
@@ -39,16 +41,16 @@ auto SourceDocument::display_name() const -> std::string {
 
 
 auto SourceDocument::replace(std::string_view new_text, std::filesystem::path source_file) -> void {
-    // SetText also removes the markers, the squiggles, and the undo history
+    // SetText also removes the markers, the squiggles, and the undo history. It calls no callback.
     text_editor.SetText(new_text);
 
     file = std::move(source_file);
 
     // The editor removes '\r', so compare with the text in the editor, not the input
     saved_text = text_editor.GetText();
-    loaded_text.clear();
-    loaded_map = {};
-    has_loaded = false;
+    dirty = false;
+
+    tracker.clear();
     markers_valid = false;
 
     (void)check();
@@ -58,19 +60,12 @@ auto SourceDocument::replace(std::string_view new_text, std::filesystem::path so
 auto SourceDocument::mark_saved(std::filesystem::path source_file, std::string saved) -> void {
     file = std::move(source_file);
     saved_text = std::move(saved);
-    (void)take_snapshot();
-}
-
-
-auto SourceDocument::is_dirty() const noexcept -> bool {
-    return (text_editor.GetUndoIndex() != snapshot_undo_index) || dirty_at_snapshot;
+    dirty = (text_editor.GetText() != saved_text);
 }
 
 
 auto SourceDocument::check() -> const AssembleResult& {
-    const auto text = take_snapshot();
-
-    checked = assemble(text);
+    checked = assemble(text_editor.GetText());
     ++check_count;
 
     show_squiggles();
@@ -79,89 +74,83 @@ auto SourceDocument::check() -> const AssembleResult& {
 
 
 auto SourceDocument::mark_loaded() -> void {
-    loaded_text = text_editor.GetText();
-    loaded_map = checked.map;
-    has_loaded = true;
-    (void)take_snapshot();
+    tracker.load(text_editor.GetText(), checked.map);
+    markers_valid = false;
 }
 
 
-auto SourceDocument::differs_from_loaded() const noexcept -> bool {
-    return !has_loaded || (text_editor.GetUndoIndex() != snapshot_undo_index) || differs_at_snapshot;
-}
-
-
-auto SourceDocument::address_of_line(size_t line) const -> std::optional<uint16_t> {
-    if (differs_from_loaded()) {
-        return std::nullopt;
+auto SourceDocument::bytes_of_line(size_t line) const -> std::expected<LineBytes, std::string> {
+    if (!tracker.has_program()) {
+        return std::unexpected("No program loaded from this text. Assemble & Load (Ctrl+B) first.");
     }
 
-    const auto* span = loaded_map.span_for_line(static_cast<uint32_t>(line), true);
+    const auto target = tracker.statement_line_from(static_cast<uint32_t>(line));
+    if (!target) {
+        return std::unexpected("No instruction or data follows this line.");
+    }
+
+    const auto* span = tracker.span_at(*target);
     if (span == nullptr) {
-        return std::nullopt;
+        return std::unexpected(std::format(
+            "Line {} is new since the last load, so it has no address. Assemble & Load (Ctrl+B) first.", *target + 1));
     }
-    return span->address;
+
+    return LineBytes{.line = *target, .address = span->address, .size = span->size};
 }
 
 
-auto SourceDocument::update_markers(const std::set<uint16_t>& breakpoints) -> void {
-    const bool differs = differs_from_loaded();
-
-    if (markers_valid && (breakpoints == marked_breakpoints) && (check_count == marked_check) && (differs == marked_differs)) {
+auto SourceDocument::reveal(uint16_t address) -> void {
+    const auto line = tracker.line_of(address);
+    if (!line) {
         return;
     }
 
-    marked_breakpoints = breakpoints;
-    marked_check = check_count;
-    marked_differs = differs;
-    markers_valid = true;
-
-    struct LineMarks {
-        bool has_problem = false;
-        bool has_error = false;
-        std::optional<uint16_t> breakpoint;
-    };
-    auto lines = std::map<uint32_t, LineMarks>{};
-
-    for (const auto& diagnostic : checked.diagnostics) {
-        auto& marks = lines[diagnostic.line];
-        marks.has_problem = true;
-        marks.has_error = marks.has_error || (diagnostic.severity == Severity::error);
-    }
-
-    // After an edit, the lines of the loaded program are not known. Show no breakpoints until the next load.
-    if (!differs) {
-        for (const auto address : breakpoints) {
-            if (const auto* span = loaded_map.span_containing(address)) {
-                auto& marks = lines[span->line];
-                if (!marks.breakpoint) {
-                    marks.breakpoint = address;
-                }
-            }
-        }
-    }
-
-    // An editor line has one marker. The line number shows the breakpoint, and the line background shows the problem.
-    text_editor.ClearMarkers();
-
-    for (const auto& [line, marks] : lines) {
-        const ImU32 number_color = marks.breakpoint ? breakpoint_color : 0;
-        const ImU32 line_color = !marks.has_problem ? 0 : (marks.has_error ? error_line_color : warning_line_color);
-        const auto tooltip = marks.breakpoint ? std::format("Breakpoint at 0x{:03X}", *marks.breakpoint) : std::string{};
-
-        text_editor.AddMarker(line, number_color, line_color, tooltip, "");
+    // The editor has no folds and no word wrap, so each row is one line. The last row can be cut off.
+    const bool visible = (*line >= text_editor.GetFirstVisibleRow()) && (*line < text_editor.GetLastVisibleRow());
+    if (!visible) {
+        text_editor.ScrollToLine(*line, TextEditor::Scroll::alignMiddle);
     }
 }
 
 
-auto SourceDocument::take_snapshot() -> std::string {
-    auto text = text_editor.GetText();
+auto SourceDocument::update_markers(std::optional<uint16_t> pc) -> void {
+    const auto pc_line = pc ? tracker.line_of(*pc) : std::nullopt;
 
-    snapshot_undo_index = text_editor.GetUndoIndex();
-    dirty_at_snapshot = (text != saved_text);
-    differs_at_snapshot = !has_loaded || (text != loaded_text);
+    if (markers_valid && (check_count == marked_check) && (pc_line == marked_pc_line)) {
+        return;
+    }
 
-    return text;
+    marked_check = check_count;
+    marked_pc_line = pc_line;
+    markers_valid = true;
+
+    // true if the line has an error, false if it has only warnings
+    auto problem_lines = std::map<uint32_t, bool>{};
+    for (const auto& diagnostic : checked.diagnostics) {
+        auto& has_error = problem_lines[diagnostic.line];
+        has_error = has_error || (diagnostic.severity == Severity::error);
+    }
+
+    // An editor line has one marker. The PC line shows the PC, also if the line has a problem.
+    text_editor.ClearMarkers();
+
+    for (const auto& [line, has_error] : problem_lines) {
+        if (line != pc_line) {
+            text_editor.AddMarker(line, 0, has_error ? error_line_color : warning_line_color, "", "");
+        }
+    }
+
+    if (pc_line) {
+        text_editor.AddMarker(*pc_line, 0, pc_line_color, "", "");
+    }
+}
+
+
+auto SourceDocument::text_changed() -> void {
+    const auto text = text_editor.GetText();
+
+    dirty = (text != saved_text);
+    tracker.update(text);
 }
 
 

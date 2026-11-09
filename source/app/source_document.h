@@ -2,17 +2,26 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <filesystem>
 #include <optional>
-#include <set>
 #include <string>
 #include <string_view>
 
 #include <imgui-color-text-edit/TextEditor.h>
 
 #include "assembler/assembler.h"
+#include "debugger/line_tracker.h"
 
 namespace c8 {
+
+/// The bytes in the loaded program that a line of the text wrote
+struct LineBytes {
+    uint32_t line    = 0; ///< The line that wrote the bytes. It can be after the line that was asked for.
+    uint16_t address = 0;
+    uint16_t size    = 0;
+};
+
 
 /**
  * @class SourceDocument
@@ -21,12 +30,14 @@ namespace c8 {
  *
  * @details The document owns the editor widget and its file. It assembles the
  *          text shortly after an edit and shows the problems as markers and
- *          squiggles. It also keeps the source map of the last program that
- *          loaded from the text, so a line can give an address.
+ *          squiggles.
  *
- *          The dirty state comes from the undo index of the editor, so it
- *          shows at once. The document compares the text after each check,
- *          so an undo back to the saved text makes it clean again.
+ *          After a load, each line that wrote bytes has a tag with its address.
+ *          The tags follow their lines through edits (see LineTracker), so the
+ *          breakpoints and the PC show at the correct lines until the next load.
+ *
+ *          After each edit, the document compares the text with the saved
+ *          text. So an undo back to the saved text makes the text clean again.
  *
  *          The callbacks of the editor point to this object, so it cannot move.
  */
@@ -36,7 +47,7 @@ public:
     SourceDocument(const SourceDocument&) = delete;
     SourceDocument(SourceDocument&&) = delete;
 
-	~SourceDocument() = default;
+    ~SourceDocument() = default;
 
     auto operator=(const SourceDocument&) -> SourceDocument& = delete;
     auto operator=(SourceDocument&&) -> SourceDocument& = delete;
@@ -61,7 +72,7 @@ public:
     [[nodiscard]]
     auto display_name() const -> std::string;
 
-    /// Replace the text. The new text counts as saved in `source_file` (empty: no file).
+    /// Replace the text. The new text counts as saved in `source_file` (empty: no file). No program loaded from it.
     auto replace(std::string_view new_text, std::filesystem::path source_file) -> void;
 
     /// The text is now saved in a file
@@ -69,7 +80,9 @@ public:
 
     /// The text changed since it was opened or saved
     [[nodiscard]]
-    auto is_dirty() const noexcept -> bool;
+    auto is_dirty() const noexcept -> bool {
+        return dirty;
+    }
 
     /// Assemble the text now and show the problems
     auto check() -> const AssembleResult&;
@@ -80,31 +93,35 @@ public:
         return checked;
     }
 
-    /// The result of the last check is now the program in the machine
+    /// The result of the last check is now the program in the machine. The check must be of the current text.
     auto mark_loaded() -> void;
 
-    /// The text changed since it was loaded, so the addresses of its lines are not known
+    /// The tags of the lines, from the program that last loaded from the text
     [[nodiscard]]
-    auto differs_from_loaded() const noexcept -> bool;
+    auto lines() const noexcept -> const LineTracker& {
+        return tracker;
+    }
 
     /**
-     * @brief The program address of a line
+     * @brief The bytes in the loaded program that a line wrote
      *
-     * @details A line that writes no bytes gives the address of the next line
-     *          that does.
+     * @details A line that writes no bytes (a comment, a label, a blank line)
+     *          gives the bytes of the next line that does.
      *
-     * @return The address, or std::nullopt if the text differs from the
-     *         loaded program or no code follows the line
+     * @return The bytes, or a message that tells why the line has none
      */
     [[nodiscard]]
-    auto address_of_line(size_t line) const -> std::optional<uint16_t>;
+    auto bytes_of_line(size_t line) const -> std::expected<LineBytes, std::string>;
 
-    /// Show the problems and the breakpoints as line markers. Call each frame, before the editor draws.
-    auto update_markers(const std::set<uint16_t>& breakpoints) -> void;
+    /// Scroll the editor to the line that wrote an address, if the line is out of view
+    auto reveal(uint16_t address) -> void;
+
+    /// Show the problems and the line of the PC as line markers. Call each frame, before the editor draws.
+    auto update_markers(std::optional<uint16_t> pc) -> void;
 
 private:
-    // Read the text and update the cached dirty and loaded states
-    auto take_snapshot() -> std::string;
+    // The editor calls this after each edit, undo, and redo
+    auto text_changed() -> void;
 
     // Show the diagnostics of the last check as squiggles
     auto show_squiggles() -> void;
@@ -112,24 +129,18 @@ private:
     TextEditor text_editor;
     std::filesystem::path file;
 
-    // The text at the last open or save, and at the last load into the machine
+    // The text at the last open or save
     std::string saved_text;
-    std::string loaded_text;
-    SourceMap loaded_map;
-    bool has_loaded = false;
+    bool dirty = false;
+
+    LineTracker tracker;
 
     AssembleResult checked;
     uint64_t check_count = 0;
 
-    // The state at the last snapshot. A different undo index means that the text changed since then.
-    size_t snapshot_undo_index = 0;
-    bool dirty_at_snapshot = false;
-    bool differs_at_snapshot = true;
-
     // The state that the markers show
-    std::set<uint16_t> marked_breakpoints;
+    std::optional<uint32_t> marked_pc_line;
     uint64_t marked_check = 0;
-    bool marked_differs = true;
     bool markers_valid = false;
 };
 
