@@ -39,7 +39,8 @@ auto discards_source(Command command) noexcept -> bool {
         case Command::open_rom:    // The editor then shows the disassembly of the ROM
         case Command::quit:
         case Command::new_source:
-        case Command::open_source: {
+        case Command::open_source:
+        case Command::disassemble: {
             return true;
         }
         default: {
@@ -86,7 +87,8 @@ auto is_enabled(Command command, const Debugger& debugger) noexcept -> bool {
         }
         case Command::reset:
         case Command::run_pause:
-        case Command::frame_advance: {
+        case Command::frame_advance:
+        case Command::disassemble: {
             return has_program;
         }
         case Command::step_into:

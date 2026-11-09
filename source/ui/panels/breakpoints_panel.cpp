@@ -1,8 +1,8 @@
 #include "breakpoints_panel.h"
 
+#include "assembler/disassembler.h"
 #include "chip8/chip8.h"
 #include "debugger/debugger.h"
-#include "instruction/instruction.h"
 #include "util/strings.h"
 
 #include <cstdint>
@@ -80,7 +80,7 @@ auto BreakpointsPanel::draw(UiContext& context) -> void {
             ImGui::Text("0x%04X", address);
 
             ImGui::TableNextColumn();
-            const auto text = to_string(instruction{state.read_word(address)});
+            const auto text = format_instruction(state.read_word(address));
             ImGui::TextUnformatted(text.c_str());
 
             ImGui::TableNextColumn();

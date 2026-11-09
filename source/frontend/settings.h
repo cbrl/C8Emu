@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdint>
 
+#include "assembler/disassembler.h"
+
 namespace c8 {
 
 /// The frontend settings
@@ -31,6 +33,9 @@ struct Settings {
     bool  muted  = false;
 
     uint32_t turbo_factor = 4;              ///< The speed multiplier while the turbo key is held
+
+    /// How the code editor disassembles a ROM
+    DisassemblyMode disassembly_mode = DisassemblyMode::flow;
 
     /// Clamp each value to its range
     auto clamp() noexcept -> void {

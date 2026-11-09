@@ -25,9 +25,10 @@ enum class OperandKind : uint8_t {
  *
  * @brief Defines how to read and write an instruction
  *
- * @details The table of instruction forms drives the assembler, syntax
- *          highlighting, and syntax reference page. A mnemonic can have more
- *          than one form, for example `se vX, nn` and `se vX, vY`.
+ * @details The table of instruction forms drives the assembler, the
+ *          disassembler, the syntax highlighting, and the syntax reference
+ *          page. A mnemonic can have more than one form, for example
+ *          `se vX, nn` and `se vX, vY`.
  */
 struct InstructionForm {
     std::string_view mnemonic;
@@ -53,6 +54,18 @@ struct InstructionForm {
 /// All instruction forms, in opcode order
 [[nodiscard]]
 auto instruction_forms() noexcept -> std::span<const InstructionForm>;
+
+/**
+ * @brief The form of an instruction word
+ *
+ * @details The form with the most fixed bits wins, so 00E0 is `cls`, not
+ *          `sys`. The one-operand shift forms are only a short way to write
+ *          `shr vX, vX` and `shl vX, vX`, so they never match.
+ *
+ * @return The form, or nullptr if the word is not an instruction
+ */
+[[nodiscard]]
+auto decode_form(uint16_t word) noexcept -> const InstructionForm*;
 
 /// True if a lowercase word is an instruction name
 [[nodiscard]]

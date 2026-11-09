@@ -61,6 +61,7 @@ auto EditorPanel::draw_menu_bar(UiContext& context) -> void {
     if (ImGui::BeginMenu("File")) {
         command_menu_item(context, "New", Command::new_source);
         command_menu_item(context, "Open...", Command::open_source);
+        disassemble_menu(context, "Disassemble Program");
         ImGui::Separator();
         command_menu_item(context, "Save", Command::save_source);
         command_menu_item(context, "Save As...", Command::save_source_as);

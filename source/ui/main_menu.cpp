@@ -19,6 +19,7 @@ auto draw_file_menu(UiContext& context) -> void {
     ImGui::Separator();
     command_menu_item(context, "New Source", Command::new_source);
     command_menu_item(context, "Open Source...", Command::open_source);
+    disassemble_menu(context, "Disassemble Program");
     command_menu_item(context, "Save Source", Command::save_source);
     command_menu_item(context, "Save Source As...", Command::save_source_as);
     command_menu_item(context, "Export ROM...", Command::export_rom);

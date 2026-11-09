@@ -1,8 +1,8 @@
 #include "program_panel.h"
 
+#include "assembler/disassembler.h"
 #include "chip8/chip8.h"
 #include "debugger/debugger.h"
-#include "instruction/instruction.h"
 
 #include <string>
 
@@ -103,7 +103,7 @@ auto ProgramPanel::draw(UiContext& context) -> void {
                 ImGui::Text("%04X", word);
 
                 ImGui::TableNextColumn();
-                const auto text = to_string(instruction{word});
+                const auto text = format_instruction(word);
                 if (in_program) {
                     ImGui::TextUnformatted(text.c_str());
                 }

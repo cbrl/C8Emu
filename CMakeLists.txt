@@ -20,6 +20,7 @@ include(cmake/variables.cmake)
 add_library(
     c8emu_lib OBJECT
     source/assembler/assembler.cpp
+    source/assembler/disassembler.cpp
     source/assembler/forms.cpp
     source/assembler/lexer.cpp
     source/assembler/source_map.cpp
@@ -29,8 +30,6 @@ add_library(
     source/audio/tone_generator.cpp
     source/debugger/debugger.cpp
     source/frontend/rom_files.cpp
-    source/instruction/instruction.cpp
-    source/instruction/opcodes.cpp
     source/util/log.cpp
 )
 

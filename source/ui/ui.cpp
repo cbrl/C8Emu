@@ -26,9 +26,10 @@ namespace {
 // The user prompt text for unsaved changes
 auto prompt_reason(Command command) -> const char* {
     switch (command) {
-        case Command::quit:     return "Save the changes before you exit?";
-        case Command::open_rom: return "A new ROM replaces the text with its disassembly. Save the changes first?";
-        default:                return "The command replaces the text. Save the changes first?";
+        case Command::quit:        return "Save the changes before you exit?";
+        case Command::open_rom:    return "A new ROM replaces the text with its disassembly. Save the changes first?";
+        case Command::disassemble: return "The disassembly replaces the text. Save the changes first?";
+        default:                   return "The command replaces the text. Save the changes first?";
     }
 }
 

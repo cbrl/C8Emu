@@ -1,6 +1,7 @@
 #include "forms.h"
 
 #include <algorithm>
+#include <bit>
 #include <initializer_list>
 
 namespace c8 {
@@ -82,6 +83,22 @@ constexpr auto directives = std::array<std::string_view, 3>{"db", "dw", "org"};
 
 auto instruction_forms() noexcept -> std::span<const InstructionForm> {
     return forms;
+}
+
+
+auto decode_form(uint16_t word) noexcept -> const InstructionForm* {
+    const InstructionForm* best = nullptr;
+
+    for (const auto& f : forms) {
+        if (f.y_copies_x || ((word & f.mask) != f.opcode)) {
+            continue;
+        }
+        if ((best == nullptr) || (std::popcount(f.mask) > std::popcount(best->mask))) {
+            best = &f;
+        }
+    }
+
+    return best;
 }
 
 

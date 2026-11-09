@@ -24,6 +24,7 @@ enum class Command : uint8_t {
     // The assembly source in the code editor
     new_source,
     open_source,
+    disassemble, ///< Replace the text with the disassembly of the loaded program
     save_source,
     save_source_as,
     export_rom,

@@ -1,7 +1,7 @@
 #include "app.h"
 
+#include "assembler/disassembler.h"
 #include "frontend/rom_files.h"
-#include "instruction/instruction.h"
 #include "util/log.h"
 
 #include <algorithm>
@@ -124,17 +124,13 @@ auto App::open_rom_dialog() -> void {
 
 
 auto App::show_disassembly() -> void {
-    const auto disassembly = decompile_program(chip.program());
+    const auto options = DisassemblyOptions{
+        .origin = chip.program_origin(),
+        .mode   = settings.disassembly_mode,
+    };
+    const auto disassembly = disassemble(chip.program(), options);
 
-    auto text = std::string{};
-    for (const auto& line : disassembly.program) {
-        if (!text.empty()) {
-            text += '\n';
-        }
-        text += line;
-    }
-
-    document.replace(text, {});
+    document.replace(disassembly.text(), {});
 
     // The disassembly assembles to the program in memory, so its lines have known addresses
     if (document.last_check().ok()) {
@@ -394,6 +390,10 @@ auto App::perform(Command command) -> void {
         }
         case Command::open_source: {
             open_source_dialog();
+            break;
+        }
+        case Command::disassemble: {
+            show_disassembly();
             break;
         }
         case Command::save_source: {

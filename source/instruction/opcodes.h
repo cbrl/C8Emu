@@ -1,8 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
-#include <string_view>
 
 /**
  * @enum Opcodes
@@ -50,28 +48,6 @@ enum class Opcodes : uint16_t {
     ld_v0_vx    = 0xF065,
     invalid     = 0xFFFF,
 };
-
-
-/**
- * @brief Convert an @ref Opcode to a string
- * 
- * @param[in] op  The opcode value
- * 
- * @return The string representation of the opcode
- */
-[[nodiscard]]
-auto to_string(Opcodes op) -> std::string;
-
-
-/**
- * @brief Convert a string to an @ref Opcode
- * 
- * @param[in] op  The string representation of the opcode
- * 
- * @return The opcode value
- */
-[[nodiscard]]
-auto to_opcode(std::string_view op) -> Opcodes;
 
 
 /**

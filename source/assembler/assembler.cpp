@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <format>
+#include <limits>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -166,12 +167,19 @@ private:
 
         switch (classify_word(head.text, WordPosition::head)) {
             case WordKind::mnemonic: {
-                if ((location % 2) != 0) {
+                const bool odd = (location % 2) != 0;
+
+                // Warn at the first instruction of a run at odd addresses only, because the cause is before the run
+                if (odd && (location != odd_run_end)) {
                     warning(line, head, std::format(
                         "The instruction is at an odd address (0x{:03X}). Data before it probably has an odd number of bytes.",
                         location));
                 }
                 add_statement(StatementKind::instruction, line, head, std::move(operands), 2);
+
+                if (odd) {
+                    odd_run_end = location;
+                }
                 break;
             }
 
@@ -553,6 +561,9 @@ private:
     // The address of the next byte. It has 32 bits, so a program that is too large does not wrap.
     uint32_t location = 0;
     bool overflow_reported = false;
+
+    // The address after the last instruction at an odd address
+    uint32_t odd_run_end = std::numeric_limits<uint32_t>::max();
 
     // Lowercase name -> index in result.labels and label_locations
     std::unordered_map<std::string, size_t> label_index;
