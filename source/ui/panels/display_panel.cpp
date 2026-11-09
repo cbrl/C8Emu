@@ -3,31 +3,46 @@
 #include "chip8/chip8.h"
 #include "frontend/settings.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace c8 {
 
 auto DisplayPanel::draw(UiContext& context) -> void {
-    if (ImGui::Begin(title(), &open, ImGuiWindowFlags_AlwaysAutoResize)) {
-        const auto& display = context.chip.state().display;
-        const auto scale = static_cast<float>(context.settings.display_scale);
-        const auto size = ImVec2{static_cast<float>(display.width()) * scale, static_cast<float>(display.height()) * scale};
-        const auto padding = ImGui::GetStyle().WindowPadding;
+    // No padding, so the image can use the whole window
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.0f, 0.0f});
+    const bool visible = ImGui::Begin(title(), &open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::PopStyleVar();
 
-        ImGui::BeginChild("Image", {size.x + (padding.x * 2.0f), size.y + (padding.y * 2.0f)}, ImGuiChildFlags_Borders);
-
-        // The OpenGL3 backend binds a linear sampler object, which overrides the filter of the texture.
-        // Select the nearest sampler for the image, then go back to the default.
-        const auto& platform_io = ImGui::GetPlatformIO();
-        auto* draw_list = ImGui::GetWindowDrawList();
-        if (platform_io.DrawCallback_SetSamplerNearest != nullptr) {
-            draw_list->AddCallback(platform_io.DrawCallback_SetSamplerNearest);
-        }
-        ImGui::Image(context.display_texture, size);
-        if (platform_io.DrawCallback_SetSamplerLinear != nullptr) {
-            draw_list->AddCallback(platform_io.DrawCallback_SetSamplerLinear);
-        }
-
-        ImGui::EndChild();
+    if (!visible) {
+        ImGui::End();
+        return;
     }
+
+    const auto& display = context.chip.state().display;
+    const auto width = static_cast<float>(display.width());
+    const auto height = static_cast<float>(display.height());
+
+    // The largest scale that fits. An integer scale gives each CHIP-8 pixel the same size.
+    const ImVec2 available = ImGui::GetContentRegionAvail();
+    float scale = std::floor(std::max(std::min(available.x / width, available.y / height), 0.0f));
+
+    const ImVec2 size = {width * scale, height * scale};
+    const ImVec2 start = ImGui::GetCursorPos();
+    ImGui::SetCursorPos({start.x + ((available.x - size.x) * 0.5f), start.y + ((available.y - size.y) * 0.5f)});
+
+    // The OpenGL3 backend binds a linear sampler object, which overrides the filter of the texture.
+    // Select the nearest sampler for the image, then go back to the default.
+    const auto& platform_io = ImGui::GetPlatformIO();
+    auto* draw_list = ImGui::GetWindowDrawList();
+    if (platform_io.DrawCallback_SetSamplerNearest != nullptr) {
+        draw_list->AddCallback(platform_io.DrawCallback_SetSamplerNearest);
+    }
+    ImGui::Image(context.display_texture, size);
+    if (platform_io.DrawCallback_SetSamplerLinear != nullptr) {
+        draw_list->AddCallback(platform_io.DrawCallback_SetSamplerLinear);
+    }
+
     ImGui::End();
 }
 

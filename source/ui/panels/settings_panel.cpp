@@ -145,11 +145,6 @@ auto draw_run_control(UiContext& context) -> void {
 
 
 auto draw_display(Settings& settings) -> void {
-    static constexpr uint32_t scale_step = 1;
-    if (ImGui::InputScalar("Display Scale", ImGuiDataType_U32, &settings.display_scale, &scale_step)) {
-        settings.display_scale = std::clamp(settings.display_scale, Settings::min_display_scale, Settings::max_display_scale);
-    }
-
     // The host frame rate. The emulation speed does not change with it.
     static constexpr uint32_t frame_limit_step      = 1;
     static constexpr uint32_t frame_limit_step_fast = 10;
