@@ -1,11 +1,16 @@
 #include "app.h"
 
+#include "frontend/rom_files.h"
+#include "instruction/instruction.h"
 #include "util/log.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <format>
+#include <string>
+#include <utility>
 
 namespace c8 {
 
@@ -26,6 +31,14 @@ auto to_emulated_frames(double seconds) -> double {
     return seconds * Chip8::frame_rate;
 }
 
+// A count and a noun, for example "1 error" or "2 errors"
+auto count_of(size_t count, std::string_view noun) -> std::string {
+    return std::format("{} {}{}", count, noun, (count == 1) ? "" : "s");
+}
+
+// The largest source file that the editor opens
+constexpr size_t max_source_size = 4 * 1024 * 1024;
+
 } // namespace
 
 
@@ -41,7 +54,7 @@ auto App::run() -> void {
         // Read the input first, so the emulated frames see the newest key state
         const auto events = platform.poll_events(keymap);
         if (events.quit) {
-            quit = true;
+            execute(Command::quit);
         }
         apply_input(events);
 
@@ -66,10 +79,12 @@ auto App::run() -> void {
             .chip            = chip,
             .debugger        = debugger,
             .session         = session,
+            .document        = document,
             .settings        = settings,
             .rate            = rate_meter.rate(),
             .display_texture = static_cast<ImTextureID>(display_texture.id()),
             .turbo_active    = turbo,
+            .unsaved_prompt  = unsaved_prompt,
             .requests        = requests,
         };
 
@@ -98,19 +113,172 @@ auto App::apply_input(const PlatformEvents& events) -> void {
 
 
 auto App::open_rom_dialog() -> void {
+    const auto chosen = show_dialog([this] {
+        return dialogs.open_file(platform.window(), FileKind::rom, session.browse_folder());
+    });
+
+    if (chosen && session.open_rom(*chosen)) {
+        show_disassembly();
+    }
+}
+
+
+auto App::show_disassembly() -> void {
+    const auto disassembly = decompile_program(chip.program());
+
+    auto text = std::string{};
+    for (const auto& line : disassembly.program) {
+        if (!text.empty()) {
+            text += '\n';
+        }
+        text += line;
+    }
+
+    document.replace(text, {});
+
+    // The disassembly assembles to the program in memory, so its lines have known addresses
+    if (document.last_check().ok()) {
+        document.mark_loaded();
+    }
+    else {
+        log_warning("The disassembly does not assemble, so the code editor cannot show the breakpoints");
+    }
+}
+
+
+auto App::open_source_dialog() -> void {
+    const auto chosen = show_dialog([this] {
+        return dialogs.open_file(platform.window(), FileKind::source, source_folder());
+    });
+    if (!chosen) {
+        return;
+    }
+
+    const auto text = read_text_file(*chosen, max_source_size);
+    if (!text) {
+        log_error("Cannot open the source: {}", text.error());
+        return;
+    }
+
+    document.replace(*text, *chosen);
+    log_info("Opened \"{}\"", path_to_utf8(*chosen));
+}
+
+
+auto App::save_source(bool choose_file) -> bool {
+    auto file = document.path();
+
+    if (choose_file || file.empty()) {
+        const auto name = file.empty() ? std::string{"untitled.c8s"} : path_to_utf8(file.filename());
+        const auto chosen = show_dialog([&] {
+            return dialogs.save_file(platform.window(), FileKind::source, source_folder(), name);
+        });
+        if (!chosen) {
+            return false;
+        }
+        file = *chosen;
+    }
+
+    auto text = document.text();
+    if (const auto written = write_text_file(file, text); !written) {
+        log_error("Cannot save the source: {}", written.error());
+        return false;
+    }
+
+    document.mark_saved(file, std::move(text));
+    log_info("Saved \"{}\"", path_to_utf8(file));
+    return true;
+}
+
+
+auto App::export_rom_dialog() -> void {
+    const auto& result = document.check();
+
+    if (!result.ok()) {
+        log_error("Cannot export the ROM: the source has {}. The Code Editor lists them.", count_of(result.error_count(), "error"));
+        return;
+    }
+    if (result.image.empty()) {
+        log_error("Cannot export the ROM: the source writes no bytes");
+        return;
+    }
+
+    // Keep a copy, because the result belongs to the document
+    const auto image = result.image;
+    const auto& source = document.path();
+    const auto name = source.empty() ? std::string{"untitled.ch8"} : (path_to_utf8(source.stem()) + ".ch8");
+
+    const auto chosen = show_dialog([&] {
+        return dialogs.save_file(platform.window(), FileKind::rom, source_folder(), name);
+    });
+    if (!chosen) {
+        return;
+    }
+
+    if (const auto written = write_file(*chosen, image); !written) {
+        log_error("Cannot export the ROM: {}", written.error());
+        return;
+    }
+    log_info("Exported \"{}\" ({} bytes)", path_to_utf8(*chosen), image.size());
+}
+
+
+auto App::assemble_and_load() -> void {
+    const auto& result = document.check();
+
+    if (!result.ok()) {
+        log_error("The assembly has {}. The Code Editor lists them.", count_of(result.error_count(), "error"));
+        return;
+    }
+    if (result.image.empty()) {
+        log_error("Nothing to load: the source writes no bytes");
+        return;
+    }
+    if (result.warning_count() > 0) {
+        log_warning("The assembly has {}. The Code Editor lists them.", count_of(result.warning_count(), "warning"));
+    }
+
+    if (session.load_assembled(result.image, document.display_name())) {
+        document.mark_loaded();
+    }
+}
+
+
+auto App::check_source() -> void {
+    const auto& result = document.check();
+    const auto name = document.display_name();
+
+    if (result.diagnostics.empty()) {
+        log_info("Check of \"{}\": no problems", name);
+    }
+    else {
+        log_info("Check of \"{}\": {} and {}", name, count_of(result.error_count(), "error"), count_of(result.warning_count(), "warning"));
+    }
+}
+
+
+auto App::show_dialog(const std::function<FileDialogs::Result()>& show) -> std::optional<std::filesystem::path> {
     // The dialog blocks the main loop, so the beep would sound until the dialog closes
     beeper.set_active(false);
 
-    const auto chosen = dialogs.open_rom(platform.window(), session.browse_folder());
-    if (!chosen) {
-        log_error("The file dialog failed: {}", chosen.error());
-    }
-    else if (*chosen) {
-        (void)session.open_rom(**chosen);
-    }
+    const auto chosen = show();
 
     // Do not count the time in the dialog as emulated time
     timer.tick();
+
+    if (!chosen) {
+        log_error("The file dialog failed: {}", chosen.error());
+        return std::nullopt;
+    }
+    return *chosen;
+}
+
+
+auto App::source_folder() const -> std::filesystem::path {
+    if (!document.path().empty()) {
+        return document.path().parent_path();
+    }
+    return session.browse_folder();
 }
 
 
@@ -172,6 +340,16 @@ auto App::execute(Command command) -> void {
         return;
     }
 
+    if (discards_source(command) && document.is_dirty()) {
+        unsaved_prompt = command;
+        return;
+    }
+
+    perform(command);
+}
+
+
+auto App::perform(Command command) -> void {
     switch (command) {
         case Command::open_rom: {
             open_rom_dialog();
@@ -208,6 +386,53 @@ auto App::execute(Command command) -> void {
         }
         case Command::frame_advance: {
             debugger.frame_advance();
+            break;
+        }
+        case Command::new_source: {
+            document.replace("", {});
+            break;
+        }
+        case Command::open_source: {
+            open_source_dialog();
+            break;
+        }
+        case Command::save_source: {
+            (void)save_source(false);
+            break;
+        }
+        case Command::save_source_as: {
+            (void)save_source(true);
+            break;
+        }
+        case Command::export_rom: {
+            export_rom_dialog();
+            break;
+        }
+        case Command::assemble_and_load: {
+            assemble_and_load();
+            break;
+        }
+        case Command::check_source: {
+            check_source();
+            break;
+        }
+        case Command::prompt_save: {
+            // A cancelled or failed save also cancels the command
+            const auto pending = std::exchange(unsaved_prompt, std::nullopt);
+            if (pending && save_source(false)) {
+                perform(*pending);
+            }
+            break;
+        }
+        case Command::prompt_discard: {
+            const auto pending = std::exchange(unsaved_prompt, std::nullopt);
+            if (pending) {
+                perform(*pending);
+            }
+            break;
+        }
+        case Command::prompt_cancel: {
+            unsaved_prompt.reset();
             break;
         }
     }

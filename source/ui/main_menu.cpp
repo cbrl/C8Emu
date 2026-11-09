@@ -17,6 +17,12 @@ auto draw_file_menu(UiContext& context) -> void {
 
     command_menu_item(context, "Open ROM...", Command::open_rom);
     ImGui::Separator();
+    command_menu_item(context, "New Source", Command::new_source);
+    command_menu_item(context, "Open Source...", Command::open_source);
+    command_menu_item(context, "Save Source", Command::save_source);
+    command_menu_item(context, "Save Source As...", Command::save_source_as);
+    command_menu_item(context, "Export ROM...", Command::export_rom);
+    ImGui::Separator();
     command_menu_item(context, "Exit", Command::quit);
 
     ImGui::EndMenu();
@@ -28,6 +34,8 @@ auto draw_debug_menu(UiContext& context) -> void {
         return;
     }
 
+    command_menu_item(context, "Assemble & Load", Command::assemble_and_load);
+    ImGui::Separator();
     command_menu_item(context, context.debugger.is_running() ? "Pause" : "Run", Command::run_pause);
     command_menu_item(context, "Frame Advance", Command::frame_advance);
 

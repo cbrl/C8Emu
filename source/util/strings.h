@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <charconv>
 #include <concepts>
+#include <cwctype>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -181,7 +183,13 @@ auto trim_whitespace(StringT& str) -> void {
 	detail::trim_impl(
 		str,
 		[](typename StringT::value_type ch) {
-			return !std::isspace(ch);
+			// std::isspace needs a value in the range of unsigned char. A plain char can be negative.
+			if constexpr (sizeof(ch) == 1) {
+				return !std::isspace(static_cast<unsigned char>(ch));
+			}
+			else {
+				return !std::iswspace(static_cast<std::wint_t>(ch));
+			}
 		}
 	);
 }

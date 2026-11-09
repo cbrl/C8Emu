@@ -20,7 +20,26 @@ enum class Command : uint8_t {
     step_over,
     step_out,
     frame_advance,
+
+    // The assembly source in the code editor
+    new_source,
+    open_source,
+    save_source,
+    save_source_as,
+    export_rom,
+    assemble_and_load,
+    check_source,
+
+    // The answers to the prompt about unsaved changes
+    prompt_save,
+    prompt_discard,
+    prompt_cancel,
 };
+
+
+/// True if a command replaces the source text or ends the app. With unsaved changes, the app asks first.
+[[nodiscard]]
+auto discards_source(Command command) noexcept -> bool;
 
 
 /// The keyboard shortcut of a command. ImGuiKey_None if the command has no shortcut.

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <vector>
 
 #include <imgui.h>
@@ -11,6 +12,7 @@ namespace c8 {
 class Chip8;
 class Debugger;
 class Session;
+class SourceDocument;
 struct EmulationRate;
 struct Settings;
 
@@ -25,14 +27,16 @@ struct UiRequests {
 
 /// What the panels can see and change
 struct UiContext {
-    Chip8&               chip;
-    Debugger&            debugger;
-    Session&             session;
-    Settings&            settings;
-    const EmulationRate& rate;
-    ImTextureID          display_texture;
-    bool                 turbo_active; ///< The turbo key is held
-    UiRequests&          requests;
+    Chip8&                        chip;
+    Debugger&                     debugger;
+    Session&                      session;
+    SourceDocument&               document;
+    Settings&                     settings;
+    const EmulationRate&          rate;
+    ImTextureID                   display_texture;
+    bool                          turbo_active;   ///< The turbo key is held
+    const std::optional<Command>& unsaved_prompt; ///< A command that waits for an answer about unsaved source changes
+    UiRequests&                   requests;
 };
 
 

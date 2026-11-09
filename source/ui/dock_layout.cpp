@@ -31,6 +31,7 @@ auto build_default_layout(ImGuiID dockspace_id) -> void {
     ImGui::DockBuilderDockWindow("Code Editor", right_top);
     ImGui::DockBuilderDockWindow("Program", right_bottom);
     ImGui::DockBuilderDockWindow("Breakpoints", right_bottom);
+    ImGui::DockBuilderDockWindow("Syntax Reference", right_bottom);
 
     ImGui::DockBuilderFinish(dockspace_id);
 }

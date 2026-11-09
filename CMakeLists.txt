@@ -19,6 +19,10 @@ include(cmake/variables.cmake)
 # without the media layer.
 add_library(
     c8emu_lib OBJECT
+    source/assembler/assembler.cpp
+    source/assembler/forms.cpp
+    source/assembler/lexer.cpp
+    source/assembler/source_map.cpp
     source/chip8/chip8.cpp
     source/chip8/quirks.cpp
     source/chip8/isa/isa.cpp
@@ -53,10 +57,12 @@ add_executable(
     source/app/app.cpp
     source/app/commands.cpp
     source/app/session.cpp
+    source/app/source_document.cpp
     source/platform/beeper.cpp
     source/platform/display_texture.cpp
     source/platform/file_dialogs.cpp
     source/platform/platform.cpp
+    source/ui/chip8_language.cpp
     source/ui/command_ui.cpp
     source/ui/dock_layout.cpp
     source/ui/main_menu.cpp
@@ -71,6 +77,7 @@ add_executable(
     source/ui/panels/registers_panel.cpp
     source/ui/panels/settings_panel.cpp
     source/ui/panels/stack_panel.cpp
+    source/ui/panels/syntax_reference_panel.cpp
 )
 add_executable(c8emu::exe ALIAS c8emu_exe)
 

@@ -55,13 +55,6 @@ public:
 };
 
 
-struct compile_result {
-    std::span<const std::string> source;
-    std::vector<uint16_t> program_data;
-    std::vector<size_t> failures; ///line numbers in the source that couldn't be parsed
-};
-
-
 struct decompile_result {
     std::span<const uint8_t> source;
     std::vector<std::string> program;
@@ -91,12 +84,6 @@ inline auto to_string(const instruction& instr) -> std::string {
 
     return op;
 }
-
-[[nodiscard]]
-auto to_instruction(std::string_view str) -> std::optional<instruction>;
-
-[[nodiscard]]
-auto compile_program(std::span<const std::string> lines) -> compile_result;
 
 [[nodiscard]]
 auto decompile_program(std::span<const uint8_t> data) -> decompile_result;

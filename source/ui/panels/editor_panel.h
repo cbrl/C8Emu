@@ -1,26 +1,22 @@
 #pragma once
 
-#include <cstdint>
-#include <set>
-
-#include <imgui-color-text-edit/TextEditor.h>
-
 #include "ui/panel.h"
 
 namespace c8 {
 
+struct Diagnostic;
+
 /**
  * @class EditorPanel
  *
- * @brief The code editor
+ * @brief The code editor, its problems, and its file and build menus
  *
- * @details A new ROM file replaces the text with its disassembly. Compile
- *          assembles the text and runs it. The breakpoints show as line markers.
+ * @details The text belongs to the SourceDocument of the app, so the text
+ *          stays when the panel closes. The app assembles the text shortly
+ *          after an edit.
  */
 class EditorPanel final : public Panel {
 public:
-    EditorPanel();
-
     [[nodiscard]]
     auto title() const -> const char* override {
         return "Code Editor";
@@ -29,24 +25,12 @@ public:
     auto draw(UiContext& context) -> void override;
 
 private:
-    // Replace the text with the disassembly of the loaded program
-    auto show_disassembly(const UiContext& context) -> void;
+    static auto draw_menu_bar(UiContext& context) -> void;
+    static auto draw_problems(UiContext& context, float table_height) -> void;
+    static auto draw_status_line(UiContext& context) -> void;
 
-    // Assemble the text and load the program
-    auto compile(UiContext& context) -> void;
-
-    // Show the breakpoints as line markers, if they changed
-    auto update_breakpoint_markers(const UiContext& context) -> void;
-
-    TextEditor editor;
-
-    // The ROM file that the text shows (Session::rom_generation)
-    uint64_t shown_rom = 0;
-
-    // The breakpoints and the origin that the markers show
-    std::set<uint16_t> marked_breakpoints;
-    uint16_t marked_origin = 0;
-    bool markers_valid = false;
+    // Move the cursor to a problem and show its line
+    static auto go_to(UiContext& context, const Diagnostic& diagnostic) -> void;
 };
 
 } // namespace c8

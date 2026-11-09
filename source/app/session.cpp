@@ -25,21 +25,20 @@ auto Session::open_rom(const std::filesystem::path& file) -> bool {
 
     rom_file = file;
     name = path_to_utf8(file.filename());
-    ++rom_count;
 
     log_info("Loaded \"{}\" ({} bytes)", name, chip.program().size());
     return true;
 }
 
 
-auto Session::load_assembled(std::span<const uint8_t> program) -> bool {
+auto Session::load_assembled(std::span<const uint8_t> program, std::string_view source_name) -> bool {
     if (const auto loaded = debugger.load_program(program); !loaded) {
         log_error("Cannot load the assembled program: {}", loaded.error());
         return false;
     }
 
-    name = "Assembled program";
-    log_info("Loaded the assembled program ({} bytes)", program.size());
+    name = source_name;
+    log_info("Assembled and loaded \"{}\" ({} bytes)", name, program.size());
     return true;
 }
 

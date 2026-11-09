@@ -18,17 +18,35 @@ struct Binding {
 };
 
 constexpr auto bindings = std::array{
-    Binding{Command::run_pause,     ImGuiKey_F5,                   ImGuiInputFlags_None},
-    Binding{Command::frame_advance, ImGuiKey_F6,                   ImGuiInputFlags_Repeat},
-    Binding{Command::step_over,     ImGuiKey_F10,                  ImGuiInputFlags_Repeat},
-    Binding{Command::step_into,     ImGuiKey_F11,                  ImGuiInputFlags_Repeat},
-    Binding{Command::step_out,      ImGuiMod_Shift | ImGuiKey_F11, ImGuiInputFlags_None},
-    Binding{Command::reset,         ImGuiMod_Ctrl | ImGuiKey_R,    ImGuiInputFlags_None},
+    Binding{Command::run_pause,         ImGuiKey_F5,                                 ImGuiInputFlags_None},
+    Binding{Command::frame_advance,     ImGuiKey_F6,                                 ImGuiInputFlags_Repeat},
+    Binding{Command::step_over,         ImGuiKey_F10,                                ImGuiInputFlags_Repeat},
+    Binding{Command::step_into,         ImGuiKey_F11,                                ImGuiInputFlags_Repeat},
+    Binding{Command::step_out,          ImGuiMod_Shift | ImGuiKey_F11,               ImGuiInputFlags_None},
+    Binding{Command::reset,             ImGuiMod_Ctrl | ImGuiKey_R,                  ImGuiInputFlags_None},
+    Binding{Command::assemble_and_load, ImGuiMod_Ctrl | ImGuiKey_B,                  ImGuiInputFlags_None},
+    Binding{Command::save_source,       ImGuiMod_Ctrl | ImGuiKey_S,                  ImGuiInputFlags_None},
+    Binding{Command::save_source_as,    ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S, ImGuiInputFlags_None},
 };
 
 constexpr auto turbo_key = ImGuiKey_Tab;
 
 } // namespace
+
+
+auto discards_source(Command command) noexcept -> bool {
+    switch (command) {
+        case Command::open_rom:    // The editor then shows the disassembly of the ROM
+        case Command::quit:
+        case Command::new_source:
+        case Command::open_source: {
+            return true;
+        }
+        default: {
+            return false;
+        }
+    }
+}
 
 
 auto shortcut(Command command) noexcept -> ImGuiKeyChord {
@@ -53,7 +71,17 @@ auto is_enabled(Command command, const Debugger& debugger) noexcept -> bool {
 
     switch (command) {
         case Command::open_rom:
-        case Command::quit: {
+        case Command::quit:
+        case Command::new_source:
+        case Command::open_source:
+        case Command::save_source:
+        case Command::save_source_as:
+        case Command::export_rom:
+        case Command::assemble_and_load:
+        case Command::check_source:
+        case Command::prompt_save:
+        case Command::prompt_discard:
+        case Command::prompt_cancel: {
             return true;
         }
         case Command::reset:

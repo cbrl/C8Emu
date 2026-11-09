@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <span>
 #include <string>
+#include <string_view>
 
 namespace c8 {
 
@@ -26,8 +27,8 @@ public:
     /// Load a ROM file and run it. Returns false on failure. The machine does not change on failure.
     auto open_rom(const std::filesystem::path& file) -> bool;
 
-    /// Load an assembled program and run it. Returns false on failure.
-    auto load_assembled(std::span<const uint8_t> program) -> bool;
+    /// Load an assembled program and run it. The source name is for display. Returns false on failure.
+    auto load_assembled(std::span<const uint8_t> program, std::string_view source_name) -> bool;
 
     /// Reset the machine and run the last program again
     auto reset() -> void;
@@ -44,12 +45,6 @@ public:
         return name;
     }
 
-    /// Increases each time a ROM file loads. The code editor then updates the disassembly.
-    [[nodiscard]]
-    auto rom_generation() const noexcept -> uint64_t {
-        return rom_count;
-    }
-
     /// The folder to show in the next Open dialog
     [[nodiscard]]
     auto browse_folder() const -> std::filesystem::path;
@@ -60,7 +55,6 @@ private:
 
     std::filesystem::path rom_file;
     std::string name;
-    uint64_t rom_count = 0;
 };
 
 } // namespace c8
