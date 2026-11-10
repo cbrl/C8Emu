@@ -7,6 +7,7 @@
 #include <glad/glad.h>
 
 #include "display/display.h"
+#include "frontend/settings.h"
 
 namespace c8 {
 
@@ -15,8 +16,9 @@ namespace c8 {
  *
  * @brief The CHIP-8 display as an OpenGL texture
  *
- * @details The texture uploads only when the pixels, the size, or the colors
- *          change. An OpenGL context must be current for the whole lifetime.
+ * @details The plane bits of each pixel select a palette color. The texture
+ *          uploads only when the pixels, the size, or the colors change. An
+ *          OpenGL context must be current for the whole lifetime.
  */
 class DisplayTexture {
 public:
@@ -29,7 +31,7 @@ public:
     auto operator=(DisplayTexture&&) -> DisplayTexture& = delete;
 
     /// Convert the pixels to RGBA colors and upload them if anything changed
-    auto update(const Display& display, uint32_t foreground_rgba, uint32_t background_rgba) -> void;
+    auto update(const Display& display, const Palette& colors) -> void;
 
     [[nodiscard]]
     auto id() const noexcept -> GLuint {
@@ -41,10 +43,9 @@ private:
 
     // The state of the last upload
     std::vector<uint8_t> uploaded_pixels;
-    size_t   width      = 0;
-    size_t   height     = 0;
-    uint32_t foreground = 0;
-    uint32_t background = 0;
+    size_t  width  = 0;
+    size_t  height = 0;
+    Palette palette{};
 
     std::vector<uint8_t> rgba;
 };

@@ -1,5 +1,6 @@
 #include "rom_files.h"
 
+#include <algorithm>
 #include <format>
 #include <fstream>
 #include <system_error>
@@ -64,6 +65,25 @@ auto path_to_utf8(const std::filesystem::path& path) -> std::string {
 auto path_from_utf8(std::string_view text) -> std::filesystem::path {
     const auto utf8 = std::u8string{reinterpret_cast<const char8_t*>(text.data()), text.size()};
     return std::filesystem::path{utf8};
+}
+
+
+auto platform_from_extension(const std::filesystem::path& file) -> std::optional<Variant> {
+    auto extension = path_to_utf8(file.extension());
+    std::ranges::transform(extension, extension.begin(), [](char c) {
+        return ((c >= 'A') && (c <= 'Z')) ? static_cast<char>(c - 'A' + 'a') : c;
+    });
+
+    if (extension == ".c8h") {
+        return Variant::chip8_hires;
+    }
+    if (extension == ".sc8") {
+        return Variant::schip;
+    }
+    if (extension == ".xo8") {
+        return Variant::xochip;
+    }
+    return std::nullopt;
 }
 
 

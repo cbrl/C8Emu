@@ -80,7 +80,7 @@ auto BreakpointsPanel::draw(UiContext& context) -> void {
             ImGui::Text("0x%04X", address);
 
             ImGui::TableNextColumn();
-            const auto text = format_instruction(state.read_word(address));
+            const auto text = format_instruction(state.read_word(address), state.read_word(address + 2u), context.chip.variant());
             ImGui::TextUnformatted(text.c_str());
 
             ImGui::TableNextColumn();

@@ -23,9 +23,10 @@ struct Token {
 /// What a word is, by its form only
 enum class WordKind : uint8_t {
     mnemonic,         ///< An instruction name, for example "mov"
-    directive,        ///< db, dw, or org
+    directive,        ///< db, dw, org, or platform
     v_register,       ///< v0 to vF. A larger number (v10) is also this kind, and an error later.
     i_register,       ///< i
+    long_keyword,     ///< long, in `mov i, long nnnn` (XO-CHIP)
     number,           ///< A number literal. Its digits can still be wrong.
     label,            ///< A name that can be a label
     label_definition, ///< A label name followed by ':'

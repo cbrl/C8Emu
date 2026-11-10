@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 
 #include <SDL3/SDL.h>
 
@@ -39,6 +40,14 @@ public:
     /// Set the volume in [0, 1]
     auto set_volume(float volume) noexcept -> void {
         tone.set_volume(volume);
+    }
+
+    /// Play an XO-CHIP audio pattern at a playback rate (bits per second)
+    auto set_pattern(std::span<const uint8_t, 16> pattern, float bits_per_second) noexcept -> void;
+
+    /// Play the plain square wave
+    auto clear_pattern() noexcept -> void {
+        tone.clear_pattern();
     }
 
     /// True if an audio device is open

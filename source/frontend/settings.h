@@ -1,11 +1,20 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 
 #include "assembler/disassembler.h"
 
 namespace c8 {
+
+/**
+ * @brief The display colors as RGBA values, indexed by the plane bits of a pixel
+ *
+ * @details Index 0 is an off pixel and index 1 is a pixel in plane 1. Only
+ *          XO-CHIP uses index 2 (plane 2) and index 3 (both planes).
+ */
+using Palette = std::array<uint32_t, 4>;
 
 /// The frontend settings
 struct Settings {
@@ -19,8 +28,7 @@ struct Settings {
     static constexpr uint32_t min_turbo_factor = 2;
     static constexpr uint32_t max_turbo_factor = 16;
 
-    uint32_t background_color = 0x000000FF; ///< RGBA
-    uint32_t foreground_color = 0xFFFFFFFF; ///< RGBA
+    Palette palette{0x000000FF, 0xFFFFFFFF, 0xAAAAAAFF, 0x555555FF};
 
     bool     frame_limit_enabled = true;
     uint32_t frame_limit         = 60;      ///< Frames per second
@@ -32,6 +40,9 @@ struct Settings {
 
     /// How the code editor disassembles a ROM
     DisassemblyMode disassembly_mode = DisassemblyMode::flow;
+
+    /// Open ROM selects the platform from the code of the program, if the file extension names none
+    bool auto_detect_platform = true;
 
     /// Clamp each value to its range
     auto clamp() noexcept -> void {

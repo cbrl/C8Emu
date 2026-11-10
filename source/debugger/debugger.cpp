@@ -1,5 +1,7 @@
 #include "debugger.h"
 
+#include "chip8/isa/decode.h"
+
 #include <format>
 #include <utility>
 
@@ -19,6 +21,8 @@ auto describe(const StopEvent& event) -> std::string {
             return std::format("Fault: {} at 0x{:04X} ({:04X})", to_string(event.fault.kind), event.fault.pc, event.fault.opcode);
         case StopReason::left_program:
             return std::format("The PC left the program at 0x{:04X}", event.pc);
+        case StopReason::exited:
+            return std::format("The program exited (00FD) at 0x{:04X}", event.pc);
     }
     return {};
 }
@@ -29,8 +33,10 @@ Debugger::Debugger(Chip8& machine) noexcept : chip(machine) {
 }
 
 
-auto Debugger::load_program(std::span<const uint8_t> program, uint16_t origin) -> std::expected<void, std::string> {
-    auto loaded = chip.load_program(program, origin);
+auto Debugger::load_program(std::span<const uint8_t> program, uint16_t origin, std::optional<Variant> variant)
+    -> std::expected<void, std::string> {
+
+    auto loaded = chip.load_program(program, origin, variant);
     if (loaded) {
         start();
     }
@@ -41,6 +47,30 @@ auto Debugger::load_program(std::span<const uint8_t> program, uint16_t origin) -
 auto Debugger::reset() -> void {
     chip.reset();
     start();
+}
+
+
+auto Debugger::set_variant(Variant variant) -> std::expected<void, std::string> {
+    if (variant == chip.variant()) {
+        return {};
+    }
+
+    auto changed = chip.set_variant(variant);
+    if (changed) {
+        start();
+    }
+    return changed;
+}
+
+
+auto Debugger::apply_preset(const Preset& preset) -> std::expected<void, std::string> {
+    const bool resets = preset.variant != chip.variant();
+
+    auto applied = chip.apply_preset(preset);
+    if (applied && resets) {
+        start();
+    }
+    return applied;
 }
 
 
@@ -82,6 +112,10 @@ auto Debugger::step_into() noexcept -> void {
             stop({.reason = StopReason::fault, .pc = result.fault.pc, .fault = result.fault});
             return;
         }
+        if (result.exited) {
+            stop({.reason = StopReason::exited, .pc = chip.state().pc});
+            return;
+        }
         if (result.executed) {
             break;
         }
@@ -98,12 +132,9 @@ auto Debugger::step_over() noexcept -> void {
     }
 
     const auto& state = chip.state();
-    const uint16_t opcode = state.read_word(state.pc);
+    const auto op = isa::decode(state.read_word(state.pc), chip.variant());
 
-    const bool is_call     = (opcode & 0xF000) == 0x2000; // 2NNN
-    const bool is_key_wait = (opcode & 0xF0FF) == 0xF00A; // FX0A
-
-    if (!is_call && !is_key_wait) {
+    if ((op != isa::Op::call) && (op != isa::Op::key)) {
         step_into();
         return;
     }
@@ -150,6 +181,10 @@ auto Debugger::run_frames(uint32_t frames, clock::time_point deadline) noexcept 
         const auto result = chip.cycle();
         if (result.fault.kind != Fault::none) {
             stop({.reason = StopReason::fault, .pc = result.fault.pc, .fault = result.fault});
+            break;
+        }
+        if (result.exited) {
+            stop({.reason = StopReason::exited, .pc = chip.state().pc});
             break;
         }
 

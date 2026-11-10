@@ -65,9 +65,13 @@ auto App::run() -> void {
         // Beep only while the program runs, so a pause during a beep is silent
         beeper.set_active(debugger.is_running() && chip.sound_active());
         beeper.set_volume(settings.muted ? 0.0f : settings.volume);
+        update_audio_pattern();
+
+        // A text without a platform line uses the platform of the machine
+        document.set_default_platform(chip.variant());
 
         rate_meter.update(chip.state(), RateMeter::clock::now());
-        display_texture.update(chip.state().display, settings.foreground_color, settings.background_color);
+        display_texture.update(chip.state().display, settings.palette);
 
         platform.begin_frame();
 
@@ -113,12 +117,35 @@ auto App::apply_input(const PlatformEvents& events) -> void {
 }
 
 
+auto App::update_audio_pattern() -> void {
+    const auto& state = chip.state();
+
+    const auto sound = AudioPattern{
+        .loaded  = state.audio_pattern_loaded,
+        .pitch   = state.pitch,
+        .pattern = state.audio_pattern,
+    };
+    if (sound == audio_pattern) {
+        return;
+    }
+    audio_pattern = sound;
+
+    // Until the program runs F002, the beep is the plain square wave
+    if (sound.loaded) {
+        beeper.set_pattern(sound.pattern, ToneGenerator::pitch_to_rate(sound.pitch));
+    }
+    else {
+        beeper.clear_pattern();
+    }
+}
+
+
 auto App::open_rom_dialog() -> void {
     const auto chosen = show_dialog([this] {
         return dialogs.open_file(platform.window(), FileKind::rom, session.browse_folder());
     });
 
-    if (chosen && session.open_rom(*chosen)) {
+    if (chosen && session.open_rom(*chosen, settings.auto_detect_platform)) {
         show_disassembly();
     }
 }
@@ -126,9 +153,13 @@ auto App::open_rom_dialog() -> void {
 
 auto App::show_disassembly() -> void {
     const auto options = DisassemblyOptions{
-        .origin = chip.program_origin(),
-        .mode   = settings.disassembly_mode,
+        .origin  = chip.program_origin(),
+        .mode    = settings.disassembly_mode,
+        .variant = chip.variant(),
     };
+
+    // The check of the disassembly must use the same platform
+    document.set_default_platform(chip.variant());
     const auto disassembly = disassemble(chip.program(), options);
 
     document.replace(disassembly.text(), {});
@@ -238,9 +269,13 @@ auto App::assemble_and_load() -> void {
     // The breakpoints move with their lines to the new addresses
     const auto remapped = remap_breakpoints(debugger.breakpoints(), document.lines(), result.map);
 
-    if (!session.load_assembled(result.image, document.display_name())) {
+    // Keep a copy, because a change of platform checks the document again
+    const auto image = result.image;
+    const auto variant = result.variant;
+    if (!session.load_assembled(image, variant, document.display_name())) {
         return;
     }
+    document.set_default_platform(chip.variant());
 
     debugger.replace_breakpoints(remapped.breakpoints);
     for (const auto address : remapped.dropped) {
@@ -344,6 +379,7 @@ auto App::log_stop_events() -> void {
             log_error("{}", message);
             break;
         case StopReason::left_program:
+        case StopReason::exited:
             log_warning("{}", message);
             break;
         case StopReason::step:

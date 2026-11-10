@@ -49,6 +49,7 @@ auto tokenize(Iterator start, Iterator end, Color& color) -> Iterator {
         case WordKind::directive:        color = Color::preprocessor; break;
         case WordKind::v_register:
         case WordKind::i_register:       color = Color::knownIdentifier; break;
+        case WordKind::long_keyword:     color = Color::keyword; break;
         case WordKind::number:           color = Color::number; break;
         case WordKind::label:            color = Color::identifier; break;
         case WordKind::label_definition: color = Color::declaration; break;

@@ -67,9 +67,11 @@ struct KeyWait {
  * @brief The complete state of a CHIP-8 machine
  */
 struct MachineState {
-    static constexpr uint16_t program_start = 0x200;
-    static constexpr uint16_t font_address  = 0x000;
-    static constexpr uint8_t  stack_depth   = 16;
+    static constexpr uint16_t program_start    = 0x200;
+    static constexpr uint16_t font_address     = 0x000; ///< 16 small digits, 5 bytes each
+    static constexpr uint16_t big_font_address = 0x050; ///< 16 big digits (SUPER-CHIP and XO-CHIP), 10 bytes each
+    static constexpr uint8_t  stack_depth      = 16;
+    static constexpr uint8_t  default_pitch    = 64;    ///< The XO-CHIP pitch that plays 4000 bits per second
 
     friend auto operator==(const MachineState&, const MachineState&) -> bool = default;
 
@@ -111,6 +113,7 @@ struct MachineState {
     }
 
     // Memory. The size is a power of two, so an address mask keeps every access in range.
+    // The size depends on the variant (4 KiB, or 64 KiB for XO-CHIP).
     std::vector<uint8_t> memory = std::vector<uint8_t>(4096);
 
     // Registers
@@ -140,6 +143,20 @@ struct MachineState {
     uint32_t rng = 1;
 
     Display display;
+
+    // XO-CHIP: the planes that DXYN, 00E0, and the scrolls use (bit 0 = plane 1, bit 1 = plane 2)
+    uint8_t planes = 1;
+
+    // XO-CHIP audio: 128 one-bit samples. They play at 4000 * 2^((pitch - 64) / 48) bits per second.
+    std::array<uint8_t, 16> audio_pattern{};
+    bool    audio_pattern_loaded = false; ///< F002 ran. Before that, the beep is a plain tone.
+    uint8_t pitch = default_pitch;
+
+    // SUPER-CHIP flag registers (FX75/FX85). A reset keeps them. A different program clears them.
+    std::array<uint8_t, 16> flags{};
+
+    // 00FD ran. The PC stays at the instruction.
+    bool exited = false;
 };
 
 } // namespace c8

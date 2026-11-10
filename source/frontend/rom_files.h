@@ -7,7 +7,10 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <optional>
 #include <vector>
+
+#include "chip8/variant.h"
 
 namespace c8 {
 
@@ -18,6 +21,15 @@ auto path_to_utf8(const std::filesystem::path& path) -> std::string;
 /// Convert UTF-8 text (for example a path from SDL) to a path
 [[nodiscard]]
 auto path_from_utf8(std::string_view text) -> std::filesystem::path;
+
+/**
+ * @brief The platform that the extension of a ROM file names
+ *
+ * @details `.c8h` is Hires CHIP-8, `.sc8` is SUPER-CHIP, and `.xo8` is
+ *          XO-CHIP. Other extensions, such as `.ch8`, name no platform.
+ */
+[[nodiscard]]
+auto platform_from_extension(const std::filesystem::path& file) -> std::optional<Variant>;
 
 /**
  * @brief Read a ROM file into memory

@@ -1,7 +1,10 @@
 #pragma once
 
+#include <optional>
+
 #include <imgui.h>
 
+#include "chip8/variant.h"
 #include "ui/panel.h"
 
 namespace c8 {
@@ -25,6 +28,9 @@ public:
 
 private:
     ImGuiTextFilter filter;
+
+    // Show only the instructions of this platform. std::nullopt shows all.
+    std::optional<Variant> platform;
 };
 
 } // namespace c8

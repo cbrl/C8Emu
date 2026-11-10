@@ -14,6 +14,8 @@
 #include "ui/ui.h"
 #include "util/stopwatch/stopwatch.h"
 
+#include <array>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -26,6 +28,14 @@ namespace c8 {
  * @brief The emulator application and its main loop
  */
 class App {
+    struct AudioPattern {
+        bool loaded = false;
+        uint8_t pitch = MachineState::default_pitch;
+        std::array<uint8_t, 16> pattern{};
+
+        friend auto operator==(const AudioPattern&, const AudioPattern&) -> bool = default;
+    };
+
 public:
     App();
 
@@ -35,6 +45,9 @@ public:
 private:
     // Apply the CHIP-8 key changes of one host frame
     auto apply_input(const PlatformEvents& events) -> void;
+
+    // Send the XO-CHIP audio pattern and pitch to the beeper when they change
+    auto update_audio_pattern() -> void;
 
     // Ask the user for a ROM file, then load it and show its disassembly
     auto open_rom_dialog() -> void;
@@ -105,6 +118,9 @@ private:
 
     // The turbo key was held in the last frame
     bool turbo = false;
+
+    // The XO-CHIP sound that the beeper plays
+    AudioPattern audio_pattern;
 
     // A command that waits until the user saves or discards the source changes
     std::optional<Command> unsaved_prompt;

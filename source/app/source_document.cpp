@@ -65,11 +65,19 @@ auto SourceDocument::mark_saved(std::filesystem::path source_file, std::string s
 
 
 auto SourceDocument::check() -> const AssembleResult& {
-    checked = assemble(text_editor.GetText());
+    checked = assemble(text_editor.GetText(), {.variant = default_platform});
     ++check_count;
 
     show_squiggles();
     return checked;
+}
+
+
+auto SourceDocument::set_default_platform(Variant variant) -> void {
+    if (variant != default_platform) {
+        default_platform = variant;
+        (void)check();
+    }
 }
 
 

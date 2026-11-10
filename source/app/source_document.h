@@ -87,6 +87,9 @@ public:
     /// Assemble the text now and show the problems
     auto check() -> const AssembleResult&;
 
+    /// The platform of a text without a `platform` line. A change checks the text again.
+    auto set_default_platform(Variant variant) -> void;
+
     /// The result of the last check
     [[nodiscard]]
     auto last_check() const noexcept -> const AssembleResult& {
@@ -137,6 +140,7 @@ private:
 
     AssembleResult checked;
     uint64_t check_count = 0;
+    Variant default_platform = Variant::chip8;
 
     // The state that the markers show
     std::optional<uint32_t> marked_pc_line;

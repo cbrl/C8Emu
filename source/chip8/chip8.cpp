@@ -29,10 +29,31 @@ constexpr auto font = std::array<uint8_t, 80>{
     0xF0, 0x80, 0xF0, 0x80, 0x80  // F
 };
 
+// The big digit sprites of SUPER-CHIP and XO-CHIP, 10 bytes each
+constexpr auto big_font = std::array<uint8_t, 160>{
+    0xFF, 0xFF, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, // 0
+    0x18, 0x78, 0x78, 0x18, 0x18, 0x18, 0x18, 0x18, 0xFF, 0xFF, // 1
+    0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, // 2
+    0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, // 3
+    0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, 0x03, 0x03, 0x03, 0x03, // 4
+    0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, // 5
+    0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, // 6
+    0xFF, 0xFF, 0x03, 0x03, 0x06, 0x0C, 0x18, 0x18, 0x18, 0x18, // 7
+    0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, // 8
+    0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, // 9
+    0x7E, 0xFF, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, 0xC3, 0xC3, 0xC3, // A
+    0xFC, 0xFC, 0xC3, 0xC3, 0xFC, 0xFC, 0xC3, 0xC3, 0xFC, 0xFC, // B
+    0x3C, 0xFF, 0xC3, 0xC0, 0xC0, 0xC0, 0xC0, 0xC3, 0xFF, 0x3C, // C
+    0xFC, 0xFE, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFE, 0xFC, // D
+    0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, // E
+    0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC0, 0xC0, 0xC0, 0xC0, // F
+};
+
 } // namespace
 
 
-Chip8::Chip8(const Quirks& quirks, uint32_t instructions_per_frame) :
+Chip8::Chip8(Variant variant, const Quirks& quirks, uint32_t instructions_per_frame) :
+    machine_variant(variant),
     quirk_set(quirks),
     ipf(std::clamp(instructions_per_frame, min_instructions_per_frame, max_instructions_per_frame)),
     seed_counter(static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count())) {
@@ -40,21 +61,30 @@ Chip8::Chip8(const Quirks& quirks, uint32_t instructions_per_frame) :
 }
 
 
-auto Chip8::load_program(std::span<const uint8_t> program, uint16_t new_origin) -> std::expected<void, std::string> {
+auto Chip8::load_program(std::span<const uint8_t> program, uint16_t new_origin, std::optional<Variant> variant)
+    -> std::expected<void, std::string> {
+
     if (program.empty()) {
         return std::unexpected(std::string{"The program is empty"});
     }
 
-    const auto capacity = max_program_size(new_origin);
+    const auto new_variant = variant.value_or(machine_variant);
+    const auto capacity = max_program_size(new_variant, new_origin);
     if (program.size() > capacity) {
         return std::unexpected(std::format(
-            "The program is too large: {} bytes, but only {} bytes fit at 0x{:03X}",
-            program.size(), capacity, new_origin
+            "The program is too large for {}: {} bytes, but only {} bytes fit at 0x{:03X}",
+            to_string(new_variant), program.size(), capacity, new_origin
         ));
+    }
+
+    // The flag registers belong to one program
+    if (!std::ranges::equal(program, image) || (new_origin != origin)) {
+        machine.flags = {};
     }
 
     image.assign(program.begin(), program.end());
     origin = new_origin;
+    machine_variant = new_variant;
     reset();
 
     return {};
@@ -62,13 +92,24 @@ auto Chip8::load_program(std::span<const uint8_t> program, uint16_t new_origin) 
 
 
 auto Chip8::reset() -> void {
-    // The keys are physical, so a reset does not release them
+    // The keys are physical, so a reset does not release them. The flag
+    // registers keep their values, as on the HP-48 calculator.
     const auto held_keys = machine.keys;
+    const auto flags = machine.flags;
 
     machine = MachineState{};
     machine.keys = held_keys;
+    machine.flags = flags;
+    machine.memory.resize(memory_size(machine_variant));
+
+    if (machine_variant == Variant::chip8_hires) {
+        machine.display.resize(64, 64);
+    }
 
     std::ranges::copy(font, machine.memory.begin() + MachineState::font_address);
+    if (has_schip(machine_variant)) {
+        std::ranges::copy(big_font, machine.memory.begin() + MachineState::big_font_address);
+    }
     std::ranges::copy(image, machine.memory.begin() + origin);
 
     machine.pc  = origin;
@@ -89,10 +130,13 @@ auto Chip8::cycle() noexcept -> CycleResult {
     }
 
     const uint16_t opcode = machine.read_word(pc);
-    const auto result = isa::execute(machine, quirk_set, opcode);
+    const auto result = isa::execute(machine, quirk_set, machine_variant, opcode);
 
     if (result.fault != Fault::none) {
         return {.fault = {result.fault, pc, opcode}};
+    }
+    if (result.effect == isa::Effect::exited) {
+        return {.exited = true};
     }
 
     ++machine.total_cycles;
@@ -118,6 +162,37 @@ auto Chip8::set_key(uint8_t key, bool down) noexcept -> void {
     const auto bit = static_cast<uint16_t>(1u << key);
     machine.keys = down ? static_cast<uint16_t>(machine.keys | bit)
                         : static_cast<uint16_t>(machine.keys & ~bit);
+}
+
+
+auto Chip8::set_variant(Variant variant) -> std::expected<void, std::string> {
+    if (variant == machine_variant) {
+        return {};
+    }
+
+    const auto capacity = max_program_size(variant, origin);
+    if (image.size() > capacity) {
+        return std::unexpected(std::format(
+            "The program does not fit in {} memory: {} bytes, but only {} bytes fit at 0x{:03X}",
+            to_string(variant), image.size(), capacity, origin
+        ));
+    }
+
+    machine_variant = variant;
+    reset();
+    return {};
+}
+
+
+auto Chip8::apply_preset(const Preset& preset) -> std::expected<void, std::string> {
+    auto changed = set_variant(preset.variant);
+    if (!changed) {
+        return changed;
+    }
+
+    quirk_set = preset.quirks;
+    set_instructions_per_frame(preset.instructions_per_frame);
+    return {};
 }
 
 

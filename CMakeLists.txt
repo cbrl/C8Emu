@@ -24,6 +24,7 @@ add_library(
     source/assembler/forms.cpp
     source/assembler/lexer.cpp
     source/assembler/source_map.cpp
+    source/chip8/analysis.cpp
     source/chip8/chip8.cpp
     source/chip8/quirks.cpp
     source/chip8/isa/isa.cpp
@@ -66,6 +67,7 @@ add_executable(
     source/ui/chip8_language.cpp
     source/ui/command_ui.cpp
     source/ui/dock_layout.cpp
+    source/ui/machine_ui.cpp
     source/ui/main_menu.cpp
     source/ui/status_bar.cpp
     source/ui/ui.cpp

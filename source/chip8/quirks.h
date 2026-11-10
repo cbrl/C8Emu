@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <string_view>
 
+#include "chip8/variant.h"
+
 namespace c8 {
 
 /// How FX55 and FX65 change the I register.
@@ -45,34 +47,51 @@ struct Quirks {
 };
 
 
-/// A named set of quirks for a known interpreter
+/// A named configuration of a known interpreter
 struct Preset {
     std::string_view id;
     std::string_view name;
-    Quirks quirks;
+    Variant  variant;
+    Quirks   quirks;
     uint32_t instructions_per_frame;
 };
 
 
+namespace detail {
+
+inline constexpr auto vip_quirks = Quirks{
+    .shift_uses_vy    = true,
+    .load_store       = LoadStoreQuirk::increment_x_plus_1,
+    .jump_uses_vx     = false,
+    .vf_reset         = true,
+    .wrap_sprites     = false,
+    .display_wait     = true,
+    .key_wait_release = true,
+};
+
+} // namespace detail
+
+
 inline constexpr auto presets = std::array{
     Preset{
-        .id   = "vip",
-        .name = "COSMAC VIP",
-        .quirks = Quirks{
-            .shift_uses_vy    = true,
-            .load_store       = LoadStoreQuirk::increment_x_plus_1,
-            .jump_uses_vx     = false,
-            .vf_reset         = true,
-            .wrap_sprites     = false,
-            .display_wait     = true,
-            .key_wait_release = true,
-        },
+        .id      = "vip",
+        .name    = "COSMAC VIP",
+        .variant = Variant::chip8,
+        .quirks  = detail::vip_quirks,
         .instructions_per_frame = 15,
     },
     Preset{
-        .id   = "chip48",
-        .name = "CHIP-48",
-        .quirks = Quirks{
+        .id      = "hires",
+        .name    = "Hires COSMAC VIP",
+        .variant = Variant::chip8_hires,
+        .quirks  = detail::vip_quirks,
+        .instructions_per_frame = 15,
+    },
+    Preset{
+        .id      = "chip48",
+        .name    = "CHIP-48",
+        .variant = Variant::chip8,
+        .quirks  = Quirks{
             .shift_uses_vy    = false,
             .load_store       = LoadStoreQuirk::increment_x,
             .jump_uses_vx     = true,
@@ -84,9 +103,10 @@ inline constexpr auto presets = std::array{
         .instructions_per_frame = 30,
     },
     Preset{
-        .id   = "schip",
-        .name = "SUPER-CHIP",
-        .quirks = Quirks{
+        .id      = "schip",
+        .name    = "SUPER-CHIP",
+        .variant = Variant::schip,
+        .quirks  = Quirks{
             .shift_uses_vy    = false,
             .load_store       = LoadStoreQuirk::unchanged,
             .jump_uses_vx     = true,
@@ -97,15 +117,34 @@ inline constexpr auto presets = std::array{
         },
         .instructions_per_frame = 30,
     },
+    Preset{
+        .id      = "xochip",
+        .name    = "XO-CHIP",
+        .variant = Variant::xochip,
+        .quirks  = Quirks{
+            .shift_uses_vy    = true,
+            .load_store       = LoadStoreQuirk::increment_x_plus_1,
+            .jump_uses_vx     = false,
+            .vf_reset         = false,
+            .wrap_sprites     = true,
+            .display_wait     = false,
+            .key_wait_release = false,
+        },
+        .instructions_per_frame = 1000,
+    },
 };
 
 
-/// Find the preset that has exactly these quirks. Returns nullptr for a custom set.
+/// Find the preset that has exactly this variant and these quirks. Returns nullptr for a custom set.
 [[nodiscard]]
-auto find_preset(const Quirks& quirks) noexcept -> const Preset*;
+auto find_preset(Variant variant, const Quirks& quirks) noexcept -> const Preset*;
 
 /// Find a preset by its id (for example "vip"). Returns nullptr if no preset has the id.
 [[nodiscard]]
 auto find_preset(std::string_view id) noexcept -> const Preset*;
+
+/// The usual preset for a variant
+[[nodiscard]]
+auto default_preset(Variant variant) noexcept -> const Preset&;
 
 } // namespace c8

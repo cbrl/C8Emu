@@ -10,13 +10,15 @@
 
 #include "chip8/machine_state.h"
 #include "chip8/quirks.h"
+#include "chip8/variant.h"
 
 namespace c8 {
 
 /// The result of one Chip8::cycle() call
 struct CycleResult {
-    bool      executed  = false; ///< An instruction ran. False for an idle cycle and for a fault.
+    bool      executed  = false; ///< An instruction ran. False for an idle cycle, an exit, and a fault.
     bool      frame_end = false; ///< The frame ended after this cycle, and the timers decremented
+    bool      exited    = false; ///< 00FD stopped the program. The state did not change.
     FaultInfo fault;             ///< The fault if fault.kind is not Fault::none. The state did not change.
 };
 
@@ -26,7 +28,10 @@ struct CycleResult {
  *
  * @brief A CHIP-8 machine and the program it runs
  *
- * @details The machine does not read the clock. Time advances only through
+ * @details The variant selects the instruction set, the memory size, and the
+ *          display modes (CHIP-8, Hires CHIP-8, SUPER-CHIP, or XO-CHIP).
+ *
+ *          The machine does not read the clock. Time advances only through
  *          cycle(): each frame is instructions_per_frame() cycles, and the
  *          timers decrement at the end of a frame. The same calls always give
  *          the same state, so stepping and running agree.
@@ -42,6 +47,7 @@ public:
     static constexpr uint32_t max_instructions_per_frame = 100'000;
 
     explicit Chip8(
+        Variant variant = presets[0].variant,
         const Quirks& quirks = presets[0].quirks,
         uint32_t instructions_per_frame = presets[0].instructions_per_frame
     );
@@ -55,17 +61,22 @@ public:
      *
      * @details The machine keeps a copy of the program, so reset() can load it
      *          again. If the program is empty or too large, nothing changes.
+     *          A program that differs from the last one clears the flag registers.
      *
      * @param[in] program  The program bytes
      * @param[in] origin   The address of the first byte
+     * @param[in] variant  The new variant, or std::nullopt to keep the current one
      *
      * @return An error message on failure
      */
     [[nodiscard]]
-    auto load_program(std::span<const uint8_t> program, uint16_t origin = MachineState::program_start)
-        -> std::expected<void, std::string>;
+    auto load_program(
+        std::span<const uint8_t> program,
+        uint16_t origin = MachineState::program_start,
+        std::optional<Variant> variant = std::nullopt
+    ) -> std::expected<void, std::string>;
 
-    /// Set the power-on state and load the last program again. Held keys stay held.
+    /// Set the power-on state and load the last program again. Held keys and the flag registers stay.
     auto reset() -> void;
 
     /// The bytes of the last loaded program
@@ -86,10 +97,17 @@ public:
         return static_cast<uint32_t>(origin + image.size());
     }
 
+    /// The largest program that fits in the memory of a variant at an origin
+    [[nodiscard]]
+    static constexpr auto max_program_size(Variant variant, uint16_t at = MachineState::program_start) noexcept -> size_t {
+        const size_t size = memory_size(variant);
+        return (at < size) ? (size - at) : 0;
+    }
+
     /// The largest program that fits in memory at an origin
     [[nodiscard]]
     auto max_program_size(uint16_t at = MachineState::program_start) const noexcept -> size_t {
-        return (at < machine.memory.size()) ? (machine.memory.size() - at) : 0;
+        return max_program_size(machine_variant, at);
     }
 
 
@@ -105,7 +123,8 @@ public:
      *          frame. The frame also ends after instructions_per_frame() cycles.
      *          At the end of a frame, the timers decrement.
      *
-     *          If the instruction faults, the state does not change.
+     *          If the instruction faults or exits (00FD), the state does not
+     *          change and the cycle does not count.
      */
     auto cycle() noexcept -> CycleResult;
 
@@ -134,6 +153,24 @@ public:
     // Configuration
     //--------------------------------------------------------------------------------
 
+    /// The instruction set and the hardware
+    [[nodiscard]]
+    auto variant() const noexcept -> Variant {
+        return machine_variant;
+    }
+
+    /**
+     * @brief Change the variant and reset the machine
+     *
+     * @details The memory size and the display change, so the machine resets
+     *          and loads the program again. If the program does not fit in the
+     *          memory of the variant, nothing changes. The same variant does nothing.
+     *
+     * @return An error message on failure
+     */
+    [[nodiscard]]
+    auto set_variant(Variant variant) -> std::expected<void, std::string>;
+
     [[nodiscard]]
     auto quirks() const noexcept -> const Quirks& {
         return quirk_set;
@@ -152,11 +189,16 @@ public:
     /// Set the cycles in each frame. The value is clamped to [min_instructions_per_frame, max_instructions_per_frame].
     auto set_instructions_per_frame(uint32_t count) noexcept -> void;
 
-    /// Use the quirks and the instructions per frame of a preset
-    auto apply_preset(const Preset& preset) noexcept -> void {
-        quirk_set = preset.quirks;
-        set_instructions_per_frame(preset.instructions_per_frame);
-    }
+    /**
+     * @brief Use the variant, the quirks, and the instructions per frame of a preset
+     *
+     * @details If the variant changes, the machine resets (see set_variant()).
+     *          If not, the state does not change. On failure, nothing changes.
+     *
+     * @return An error message on failure
+     */
+    [[nodiscard]]
+    auto apply_preset(const Preset& preset) -> std::expected<void, std::string>;
 
     /**
      * @brief Set the seed of the CXNN random number generator
@@ -193,6 +235,7 @@ private:
     auto next_seed() noexcept -> uint32_t;
 
     MachineState machine;
+    Variant machine_variant;
     Quirks quirk_set;
     uint32_t ipf;
 

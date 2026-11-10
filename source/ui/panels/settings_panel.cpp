@@ -4,6 +4,7 @@
 #include "debugger/debugger.h"
 #include "frontend/settings.h"
 #include "ui/command_ui.h"
+#include "ui/machine_ui.h"
 
 #include <algorithm>
 #include <array>
@@ -51,23 +52,6 @@ auto quirk_checkbox(const char* label, bool& value, const char* tooltip) -> bool
     const bool changed = ImGui::Checkbox(label, &value);
     ImGui::SetItemTooltip("%s", tooltip);
     return changed;
-}
-
-
-auto draw_preset_combo(Chip8& chip) -> void {
-    const auto* current = find_preset(chip.quirks());
-    const auto preview = current ? std::string{current->name} : std::string{"Custom"};
-
-    if (ImGui::BeginCombo("Preset", preview.c_str())) {
-        for (const auto& preset : presets) {
-            const auto name = std::string{preset.name};
-            if (ImGui::Selectable(name.c_str(), current == &preset)) {
-                chip.apply_preset(preset);
-            }
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::SetItemTooltip("A preset sets the quirks and the instructions per frame");
 }
 
 
@@ -144,7 +128,7 @@ auto draw_run_control(UiContext& context) -> void {
 }
 
 
-auto draw_display(Settings& settings) -> void {
+auto draw_display(Settings& settings, Variant variant) -> void {
     // The host frame rate. The emulation speed does not change with it.
     static constexpr uint32_t frame_limit_step      = 1;
     static constexpr uint32_t frame_limit_step_fast = 10;
@@ -156,8 +140,18 @@ auto draw_display(Settings& settings) -> void {
     }
     ImGui::EndDisabled();
 
-    color_edit("Background Color", settings.background_color);
-    color_edit("Foreground Color", settings.foreground_color);
+    // Only XO-CHIP draws to plane 2, so the other platforms use 2 colors
+    auto& palette = settings.palette;
+    if (has_xochip(variant)) {
+        color_edit("Off", palette[0]);
+        color_edit("Plane 1", palette[1]);
+        color_edit("Plane 2", palette[2]);
+        color_edit("Both Planes", palette[3]);
+    }
+    else {
+        color_edit("Background Color", palette[0]);
+        color_edit("Foreground Color", palette[1]);
+    }
 }
 
 
@@ -181,7 +175,7 @@ auto SettingsPanel::draw(UiContext& context) -> void {
         draw_emulation(context);
 
         section("Display");
-        draw_display(context.settings);
+        draw_display(context.settings, context.chip.variant());
 
         section("Audio");
         draw_audio(context.settings);
@@ -196,7 +190,8 @@ auto SettingsPanel::draw(UiContext& context) -> void {
 auto SettingsPanel::draw_emulation(UiContext& context) -> void {
     auto& chip = context.chip;
 
-    draw_preset_combo(chip);
+    platform_combo(context, "Platform");
+    preset_combo(context, "Preset");
     draw_quirks(chip);
 
     ImGui::Spacing();

@@ -5,6 +5,7 @@
 #include "debugger/debugger.h"
 #include "frontend/rate_meter.h"
 #include "frontend/settings.h"
+#include "ui/machine_ui.h"
 
 #include <string>
 
@@ -74,9 +75,12 @@ auto draw_status_bar(const UiContext& context) -> void {
             }
             ImGui::Separator();
 
-            const auto* preset = find_preset(context.chip.quirks());
-            const auto preset_name = preset ? std::string{preset->name} : std::string{"Custom quirks"};
-            ImGui::TextUnformatted(preset_name.c_str());
+            const auto& display = context.chip.state().display;
+            const auto platform = std::string{to_string(context.chip.variant())};
+            ImGui::Text("%s %zux%zu", platform.c_str(), display.width(), display.height());
+            ImGui::Separator();
+
+            ImGui::TextUnformatted(preset_name(context.chip).c_str());
             ImGui::Separator();
 
             ImGui::Text("%u IPF", context.chip.instructions_per_frame());

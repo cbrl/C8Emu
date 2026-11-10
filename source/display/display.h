@@ -21,6 +21,10 @@ public:
     static constexpr size_t max_width  = 128;
     static constexpr size_t max_height = 64;
 
+    /// The number of bit planes. XO-CHIP draws to 2 planes, so a pixel has 4 colors.
+    static constexpr size_t  plane_count = 2;
+    static constexpr uint8_t all_planes  = (1u << plane_count) - 1;
+
     /// A 64x32 display
     Display() noexcept : Display(64, 32) {
     }
@@ -52,10 +56,37 @@ public:
         return w * h;
     }
 
-    /// Set every pixel to 0
-    auto clear() noexcept -> void {
-        px.fill(0);
+    /// Clear the given plane bits of every pixel. The default clears all planes.
+    auto clear(uint8_t planes = all_planes) noexcept -> void {
+        if (planes == all_planes) {
+            px.fill(0);
+        }
+        else {
+            for (auto& value : std::span{px}.first(size())) {
+                value = static_cast<uint8_t>(value & ~planes);
+            }
+        }
         ++change_count;
+    }
+
+    /// Move the given planes down by `rows`. The rows at the top become 0.
+    auto scroll_down(size_t rows, uint8_t planes = all_planes) noexcept -> void {
+        shift(0, static_cast<ptrdiff_t>(rows), planes);
+    }
+
+    /// Move the given planes up by `rows`. The rows at the bottom become 0.
+    auto scroll_up(size_t rows, uint8_t planes = all_planes) noexcept -> void {
+        shift(0, -static_cast<ptrdiff_t>(rows), planes);
+    }
+
+    /// Move the given planes left by `columns`. The columns at the right become 0.
+    auto scroll_left(size_t columns, uint8_t planes = all_planes) noexcept -> void {
+        shift(-static_cast<ptrdiff_t>(columns), 0, planes);
+    }
+
+    /// Move the given planes right by `columns`. The columns at the left become 0.
+    auto scroll_right(size_t columns, uint8_t planes = all_planes) noexcept -> void {
+        shift(static_cast<ptrdiff_t>(columns), 0, planes);
     }
 
     /// Get the plane bits of a pixel. A pixel outside the display is 0.
@@ -104,6 +135,36 @@ public:
     }
 
 private:
+    // Move the plane bits by (dx, dy). Bits that move in from outside the display are 0.
+    auto shift(ptrdiff_t dx, ptrdiff_t dy, uint8_t planes) noexcept -> void {
+        const auto width  = static_cast<ptrdiff_t>(w);
+        const auto height = static_cast<ptrdiff_t>(h);
+
+        // Copy in the direction that reads each source pixel before it is overwritten
+        const bool reverse_y = dy > 0;
+        const bool reverse_x = dx > 0;
+
+        for (ptrdiff_t row = 0; row < height; ++row) {
+            const ptrdiff_t y = reverse_y ? (height - 1 - row) : row;
+            const ptrdiff_t source_y = y - dy;
+
+            for (ptrdiff_t column = 0; column < width; ++column) {
+                const ptrdiff_t x = reverse_x ? (width - 1 - column) : column;
+                const ptrdiff_t source_x = x - dx;
+
+                uint8_t source = 0;
+                if ((source_x >= 0) && (source_x < width) && (source_y >= 0) && (source_y < height)) {
+                    source = px[static_cast<size_t>((source_y * width) + source_x)];
+                }
+
+                auto& value = px[static_cast<size_t>((y * width) + x)];
+                value = static_cast<uint8_t>((value & ~planes) | (source & planes));
+            }
+        }
+
+        ++change_count;
+    }
+
     size_t w = 64;
     size_t h = 32;
     std::array<uint8_t, max_width * max_height> px;

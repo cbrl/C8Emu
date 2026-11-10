@@ -38,6 +38,14 @@ constexpr auto field_nn   = Field{.name = "nn", .bits = 8, .allow_label = false}
 constexpr auto field_n    = Field{.name = "n", .bits = 4, .allow_label = false};
 constexpr auto field_byte = Field{.name = "a byte", .bits = 8, .allow_label = false};
 constexpr auto field_word = Field{.name = "a word", .bits = 16, .allow_label = true};
+constexpr auto field_nnnn = Field{.name = "nnnn", .bits = 16, .allow_label = true};
+
+
+// The words of an encoded instruction. Only F000 NNNN has a second word.
+struct EncodedInstruction {
+    uint16_t first  = 0;
+    uint16_t second = 0;
+};
 
 
 enum class StatementKind : uint8_t {
@@ -67,6 +75,7 @@ public:
         location(assemble_options.origin) {
 
         result.origin = options.origin;
+        result.variant = options.variant;
     }
 
     auto run() -> AssembleResult {
@@ -153,6 +162,13 @@ private:
 
         // A label on an org line gets the address after the org
         const auto lowercase = to_lower_ascii(head.text);
+        if (lowercase == "platform") {
+            if (label != nullptr) {
+                define_label(line, *label);
+            }
+            set_platform(line, head, operands);
+            return;
+        }
         if (lowercase == "org") {
             org(line, head, operands);
             if (label != nullptr) {
@@ -175,7 +191,8 @@ private:
                         "The instruction is at an odd address (0x{:03X}). Data before it probably has an odd number of bytes.",
                         location));
                 }
-                add_statement(StatementKind::instruction, line, head, std::move(operands), 2);
+                const auto size = instruction_size(operands);
+                add_statement(StatementKind::instruction, line, head, std::move(operands), size);
 
                 if (odd) {
                     odd_run_end = location;
@@ -213,6 +230,16 @@ private:
         }
     }
 
+    // The size of an instruction line. Only `mov i, long nnnn` (F000 NNNN) has 4 bytes.
+    // A line with `long` keeps 4 bytes even if it has an error, so the addresses after it do not move.
+    [[nodiscard]]
+    static auto instruction_size(const std::vector<Token>& operands) -> uint32_t {
+        const bool long_form = std::ranges::any_of(operands, [](const Token& operand) {
+            return classify_word(operand.text, WordPosition::operand) == WordKind::long_keyword;
+        });
+        return long_form ? 4 : 2;
+    }
+
     [[nodiscard]]
     static auto unknown_instruction_message(std::string_view word) -> std::string {
         switch (classify_word(word, WordPosition::head)) {
@@ -229,7 +256,40 @@ private:
         }
     }
 
+    // The address after the last byte of memory
+    [[nodiscard]]
+    auto memory_end() const noexcept -> uint32_t {
+        return static_cast<uint32_t>(memory_size(result.variant));
+    }
+
+    auto set_platform(uint32_t line, const Token& head, const std::vector<Token>& operands) -> void {
+        if (operands.size() != 1) {
+            error(line, head, "'platform' needs one name: chip8, hires, schip, or xochip");
+            return;
+        }
+        if (body_started) {
+            error(line, head, "'platform' must come before the first instruction, data, or org line");
+            return;
+        }
+        if (platform_line) {
+            error(line, head, std::format("The platform is already set on line {}", *platform_line + 1));
+            return;
+        }
+
+        const auto& operand = operands.front();
+        const auto variant = variant_from_id(to_lower_ascii(operand.text));
+        if (!variant) {
+            error(line, operand, std::format("'{}' is not a platform. Use chip8, hires, schip, or xochip.", operand.text));
+            return;
+        }
+
+        result.variant = *variant;
+        platform_line = line;
+    }
+
     auto add_statement(StatementKind kind, uint32_t line, const Token& head, std::vector<Token> operands, uint32_t size) -> void {
+        body_started = true;
+
         auto statement = Statement{
             .kind     = kind,
             .line     = line,
@@ -239,14 +299,14 @@ private:
             .operands = std::move(operands),
         };
 
-        if ((location + size) > options.memory_size) {
+        if ((location + size) > memory_end()) {
             statement.failed = true;
 
             // One error is enough. All lines after this one are also outside memory.
             if (!overflow_reported) {
                 error(line, head, std::format(
-                    "The program does not fit in memory. This line ends at 0x{:X}, but memory ends at 0x{:X}.",
-                    location + size, options.memory_size));
+                    "The program does not fit in memory. This line ends at 0x{:X}, but {} memory ends at 0x{:X}.",
+                    location + size, to_string(result.variant), memory_end()));
                 overflow_reported = true;
             }
         }
@@ -256,6 +316,8 @@ private:
     }
 
     auto org(uint32_t line, const Token& head, const std::vector<Token>& operands) -> void {
+        body_started = true;
+
         if (operands.size() != 1) {
             error(line, head, "'org' needs one address");
             return;
@@ -276,8 +338,8 @@ private:
         if (*value < static_cast<int64_t>(location)) {
             error(line, operand, std::format("'org' cannot move back. The address is already 0x{:03X}.", location));
         }
-        else if (*value > static_cast<int64_t>(options.memory_size)) {
-            error(line, operand, std::format("0x{:X} is past the end of memory (0x{:X})", *value, options.memory_size));
+        else if (*value > static_cast<int64_t>(memory_end())) {
+            error(line, operand, std::format("0x{:X} is past the end of memory (0x{:X})", *value, memory_end()));
         }
         else {
             location = static_cast<uint32_t>(*value);
@@ -332,8 +394,11 @@ private:
 
         switch (statement.kind) {
             case StatementKind::instruction: {
-                if (const auto word = encode_instruction(statement)) {
-                    write_word(statement.address, *word);
+                if (const auto words = encode_instruction(statement)) {
+                    write_word(statement.address, words->first);
+                    if (statement.size == 4) {
+                        write_word(statement.address + 2, words->second);
+                    }
                 }
                 break;
             }
@@ -366,7 +431,7 @@ private:
     }
 
     [[nodiscard]]
-    auto encode_instruction(const Statement& statement) -> std::optional<uint16_t> {
+    auto encode_instruction(const Statement& statement) -> std::optional<EncodedInstruction> {
         const auto line = statement.line;
         const auto mnemonic = to_lower_ascii(statement.head.text);
         const auto& operands = statement.operands;
@@ -376,11 +441,15 @@ private:
             switch (kind) {
                 case OperandKind::vx:
                 case OperandKind::vy:
-                case OperandKind::v0:  return word == WordKind::v_register;
-                case OperandKind::i:   return word == WordKind::i_register;
+                case OperandKind::v0:      return word == WordKind::v_register;
+                case OperandKind::i:       return word == WordKind::i_register;
+                case OperandKind::long_kw: return word == WordKind::long_keyword;
                 case OperandKind::nnn:
                 case OperandKind::nn:
-                case OperandKind::n:   return (word != WordKind::v_register) && (word != WordKind::i_register);
+                case OperandKind::n:
+                case OperandKind::nx:
+                case OperandKind::nnnn:
+                    return (word != WordKind::v_register) && (word != WordKind::i_register) && (word != WordKind::long_keyword);
             }
             return false;
         };
@@ -413,7 +482,16 @@ private:
             return std::nullopt;
         }
 
+        if (!match->available_on(result.variant)) {
+            const auto* suggestion = ((match->variants & on_schip) != 0) ? "schip" : "xochip";
+            error(line, statement.head, std::format(
+                "'{}' needs {}. The platform is {}. Add 'platform {}' before the first instruction.",
+                format_syntax(*match), platform_list(match->variants), to_string(result.variant), suggestion));
+            return std::nullopt;
+        }
+
         auto word = match->opcode;
+        uint16_t second = 0;
         uint32_t x = 0;
         bool ok = true;
 
@@ -445,7 +523,8 @@ private:
                     break;
                 }
 
-                case OperandKind::i: {
+                case OperandKind::i:
+                case OperandKind::long_kw: {
                     break;
                 }
 
@@ -462,6 +541,26 @@ private:
                     }
                     break;
                 }
+
+                case OperandKind::nx: {
+                    if (const auto value = value_of(line, operand, field_n)) {
+                        word |= static_cast<uint16_t>(*value << 8);
+                    }
+                    else {
+                        ok = false;
+                    }
+                    break;
+                }
+
+                case OperandKind::nnnn: {
+                    if (const auto value = value_of(line, operand, field_nnnn)) {
+                        second = static_cast<uint16_t>(*value);
+                    }
+                    else {
+                        ok = false;
+                    }
+                    break;
+                }
             }
         }
 
@@ -469,7 +568,7 @@ private:
             word |= static_cast<uint16_t>(x << 4);
         }
 
-        return ok ? std::optional{word} : std::nullopt;
+        return ok ? std::optional{EncodedInstruction{.first = word, .second = second}} : std::nullopt;
     }
 
     [[nodiscard]]
@@ -517,6 +616,11 @@ private:
                 return std::nullopt;
             }
 
+            case WordKind::long_keyword: {
+                error(line, token, "Expected a number here, not the keyword 'long'");
+                return std::nullopt;
+            }
+
             case WordKind::mnemonic: {
                 error(line, token, std::format("'{}' is an instruction name, not a number or a label", token.text));
                 return std::nullopt;
@@ -561,6 +665,10 @@ private:
     // The address of the next byte. It has 32 bits, so a program that is too large does not wrap.
     uint32_t location = 0;
     bool overflow_reported = false;
+
+    // A line that writes bytes or moves the address came before. A platform line must come before both.
+    bool body_started = false;
+    std::optional<uint32_t> platform_line;
 
     // The address after the last instruction at an odd address
     uint32_t odd_run_end = std::numeric_limits<uint32_t>::max();

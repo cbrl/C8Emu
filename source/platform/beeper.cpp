@@ -40,6 +40,20 @@ Beeper::~Beeper() {
 }
 
 
+auto Beeper::set_pattern(std::span<const uint8_t, 16> pattern, float bits_per_second) noexcept -> void {
+    // SDL holds the stream lock while it calls feed(), so the audio thread never sees half a pattern
+    if (stream != nullptr) {
+        SDL_LockAudioStream(stream);
+    }
+
+    tone.set_pattern(pattern, bits_per_second);
+
+    if (stream != nullptr) {
+        SDL_UnlockAudioStream(stream);
+    }
+}
+
+
 auto SDLCALL Beeper::feed(void* user_data, SDL_AudioStream* audio_stream, int additional_bytes, [[maybe_unused]] int total_bytes) -> void {
     auto& beeper = *static_cast<Beeper*>(user_data);
 

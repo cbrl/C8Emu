@@ -20,6 +20,8 @@ constexpr auto directives = std::array{
     Entry{"db n, ...", "Write bytes"},
     Entry{"dw nnnn, ...", "Write 16-bit words, high byte first. A label gives its address."},
     Entry{"org address", "Move forward to an address. Zeros fill the gap."},
+    Entry{"platform name", "The platform: chip8, hires, schip, or xochip. It sets the instructions and the memory size. "
+                           "It must come before the first instruction, data, or org line. Without it, the platform of the machine applies."},
     Entry{"nnnn", "A line with only a number writes it as a word"},
 };
 
@@ -30,6 +32,7 @@ constexpr auto syntax_rules = std::array{
     Entry{"#42  #-1", "Decimal numbers. A negative number is stored as two's complement."},
     Entry{"%0010_1010", "Binary numbers. A '_' can separate the digits after a prefix."},
     Entry{"v0 to vF, i", "The registers"},
+    Entry{"long", "The keyword of the 4-byte XO-CHIP instruction 'mov i, long nnnn'"},
     Entry{"a, b  a b", "Commas and spaces both separate the operands"},
 };
 
@@ -50,6 +53,17 @@ auto cell(std::string_view text, bool wrap = false) -> void {
 
 auto passes(const ImGuiTextFilter& filter, std::string_view a, std::string_view b) -> bool {
     return filter.PassFilter(a.data(), a.data() + a.size()) || filter.PassFilter(b.data(), b.data() + b.size());
+}
+
+// The short list of the platforms of a form, for the table
+auto platform_text(const InstructionForm& form) -> std::string {
+    if ((form.variants & on_all) == on_all) {
+        return "All";
+    }
+    if (form.variants == on_super) {
+        return "SUPER-CHIP, XO-CHIP";
+    }
+    return platform_list(form.variants);
 }
 
 // Renders a table of the assembly syntax and descriptions
@@ -84,21 +98,43 @@ auto SyntaxReferencePanel::draw(UiContext& /*context*/) -> void {
     filter.Draw("Filter", ImGui::GetFontSize() * 12.0f);
     ImGui::SetItemTooltip("Show only the rows that hold this text, for example \"vX\" or \"skip\"");
 
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 9.0f);
+    const auto preview = platform ? std::string{to_string(*platform)} : std::string{"All platforms"};
+    if (ImGui::BeginCombo("##platform", preview.c_str())) {
+        if (ImGui::Selectable("All platforms", !platform)) {
+            platform.reset();
+        }
+        for (const auto variant : all_variants) {
+            const auto name = std::string{to_string(variant)};
+            if (ImGui::Selectable(name.c_str(), platform == variant)) {
+                platform = variant;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SetItemTooltip("Show only the instructions of one platform");
+
     ImGui::SeparatorText("Instructions");
 
-    if (ImGui::BeginTable("##instructions", 3, table_flags)) {
+    if (ImGui::BeginTable("##instructions", 4, table_flags)) {
         ImGui::TableSetupColumn("Syntax");
         ImGui::TableSetupColumn("Opcode");
+        ImGui::TableSetupColumn("Platforms");
         ImGui::TableSetupColumn("Effect", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableHeadersRow();
 
         for (const auto& form : instruction_forms()) {
-            const auto syntax = format_syntax(form);
+            if (platform && !form.available_on(*platform)) {
+                continue;
+            }
 
+            const auto syntax = format_syntax(form);
             if (passes(filter, syntax, form.summary)) {
                 ImGui::TableNextRow();
                 cell(syntax);
                 cell(form.pattern);
+                cell(platform_text(form));
                 cell(form.summary, true);
             }
         }

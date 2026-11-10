@@ -1,12 +1,11 @@
 # Hacking
 
-This file tells you how to build and test this project as a developer.
+This file tells you how to build this project as a developer.
 
 ## Developer mode
 
 The `c8emu_DEVELOPER_MODE` option controls the targets that only developers
-use. When the option is on, CMake adds the tests and the other developer
-targets. When the option is off, you are a consumer of the project and these
+use. When the option is on, CMake adds the developer targets. When the option is off, you are a consumer of the project and these
 targets are not necessary.
 
 ## Presets
@@ -41,16 +40,6 @@ this file, so each developer can keep a different one:
       "configurePreset": "dev",
       "configuration": "Debug"
     }
-  ],
-  "testPresets": [
-    {
-      "name": "dev",
-      "configurePreset": "dev",
-      "configuration": "Debug",
-      "output": {
-        "outputOnFailure": true
-      }
-    }
   ]
 }
 ```
@@ -74,13 +63,11 @@ environment variable and configure from a Visual Studio developer prompt.
 ## Dependency manager
 
 The `vcpkg` preset uses [vcpkg][vcpkg]. Set the `VCPKG_ROOT` environment
-variable to the directory that holds the vcpkg executable. The `dev-mode`
-preset enables the `test` feature of [vcpkg.json](vcpkg.json), which adds
-Catch2.
+variable to the directory that holds the vcpkg executable.
 
 On Windows, also inherit from the `vcpkg-win64-static` preset. This preset
-links the dependencies statically. Then the tests and the emulator run without
-a change to `PATH`.
+links the dependencies statically. Then the emulator runs without a change to
+`PATH`.
 
 [vcpkg.json](vcpkg.json) sets a `builtin-baseline`. The baseline is a commit
 of the vcpkg registry, and it sets the version of each dependency. To upgrade
@@ -99,35 +86,25 @@ upgrade one, follow these steps:
 The fork of ImGuiColorTextEdit releases one tag for each Dear ImGui version.
 Upgrade it together with the `imgui` port.
 
-## Configure, build and test
+## Configure and build
 
-Use these commands from the project root to configure, build and test the
-project:
+Use these commands from the project root to configure and build the project:
 
 ```sh
 cmake --preset=dev
 cmake --build --preset=dev
-ctest --preset=dev
 ```
 
 An editor or IDE with preset support (VS Code, CLion, Visual Studio) can also
 use these presets.
 
-The build and test commands accept a `-j` flag that sets the number of jobs.
+The build command accepts a `-j` flag that sets the number of jobs.
 You can also put a `jobs` property in your preset. See the
 [presets documentation][1].
 
 ## Developer mode targets
 
 Use the build command with `-t <target>` to run these targets:
-
-### `coverage`
-
-This target is available when `ENABLE_COVERAGE` is on. It processes the
-output of a test run that used the coverage configuration. The
-`COVERAGE_TRACE_COMMAND` and `COVERAGE_HTML_COMMAND` cache variables hold its
-commands. The trace command writes an info file. The HTML command writes an
-HTML report to `<binary-dir>/coverage_html`.
 
 ### `run-exe`
 

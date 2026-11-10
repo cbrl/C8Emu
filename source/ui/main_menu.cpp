@@ -2,7 +2,9 @@
 
 #include "chip8/chip8.h"
 #include "debugger/debugger.h"
+#include "frontend/settings.h"
 #include "ui/command_ui.h"
+#include "ui/machine_ui.h"
 
 #include <string>
 
@@ -66,18 +68,13 @@ auto draw_options_menu(UiContext& context) -> void {
         return;
     }
 
-    if (ImGui::BeginMenu("Quirk Preset")) {
-        const auto* current = find_preset(context.chip.quirks());
+    platform_menu(context, "Platform");
+    preset_menu(context, "Preset");
 
-        for (const auto& preset : presets) {
-            const auto name = std::string{preset.name};
-            if (ImGui::MenuItem(name.c_str(), nullptr, current == &preset)) {
-                context.chip.apply_preset(preset);
-            }
-        }
-
-        ImGui::EndMenu();
-    }
+    ImGui::Separator();
+    ImGui::MenuItem("Auto-detect Platform", nullptr, &context.settings.auto_detect_platform);
+    ImGui::SetItemTooltip("Open ROM selects the platform from the instructions of the program.\n"
+                          "The extensions .c8h, .sc8, and .xo8 always select their platform.");
 
     ImGui::EndMenu();
 }

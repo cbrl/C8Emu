@@ -45,6 +45,7 @@ auto ProgramPanel::draw(UiContext& context) -> void {
     }
 
     const auto& state = context.chip.state();
+    const auto variant = context.chip.variant();
     auto& debugger = context.debugger;
 
     ImGui::Checkbox("Follow PC", &follow_pc);
@@ -103,12 +104,20 @@ auto ProgramPanel::draw(UiContext& context) -> void {
                 ImGui::Text("%04X", word);
 
                 ImGui::TableNextColumn();
-                const auto text = format_instruction(word);
-                if (in_program) {
-                    ImGui::TextUnformatted(text.c_str());
+
+                // On XO-CHIP, the word after F000 is the address of the instruction, not an instruction
+                const bool long_operand = has_xochip(variant) && (state.read_word(address - 2u) == 0xF000);
+                if (long_operand) {
+                    ImGui::TextDisabled("(the address of F000)");
                 }
                 else {
-                    ImGui::TextDisabled("%s", text.c_str());
+                    const auto text = format_instruction(word, state.read_word(address + 2u), variant);
+                    if (in_program) {
+                        ImGui::TextUnformatted(text.c_str());
+                    }
+                    else {
+                        ImGui::TextDisabled("%s", text.c_str());
+                    }
                 }
 
                 // Scroll only if the PC row is out of view, so the listing does not jump at each step

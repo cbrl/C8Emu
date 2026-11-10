@@ -19,7 +19,7 @@ The [ports](ports) directory holds overlay ports for them.
 
 ## Building
 See [BUILDING.md](BUILDING.md) for a user build.
-See [HACKING.md](HACKING.md) for a developer build with tests.
+See [HACKING.md](HACKING.md) for a developer build.
 
 ## Example
 ![Screenshot](media/screenshot.png)

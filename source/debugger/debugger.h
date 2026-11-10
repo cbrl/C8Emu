@@ -21,6 +21,7 @@ enum class StopReason : uint8_t {
     breakpoint,   ///< The PC reached a breakpoint
     fault,        ///< An instruction faulted. StopEvent::fault has the details.
     left_program, ///< The PC left the loaded program
+    exited,       ///< The program ran 00FD (SUPER-CHIP and XO-CHIP)
 };
 
 /// A stop of execution and where it happened
@@ -75,13 +76,29 @@ public:
     // Program
     //--------------------------------------------------------------------------------
 
-    /// Load a program into the machine and run it. On failure, nothing changes.
+    /// Load a program into the machine and run it. A variant also changes the machine. On failure, nothing changes.
     [[nodiscard]]
-    auto load_program(std::span<const uint8_t> program, uint16_t origin = MachineState::program_start)
-        -> std::expected<void, std::string>;
+    auto load_program(
+        std::span<const uint8_t> program,
+        uint16_t origin = MachineState::program_start,
+        std::optional<Variant> variant = std::nullopt
+    ) -> std::expected<void, std::string>;
 
     /// Reset the machine and run the program again. A breakpoint at the origin stops it at once.
     auto reset() -> void;
+
+    /// Change the variant of the machine. On success, the machine resets and runs the program.
+    [[nodiscard]]
+    auto set_variant(Variant variant) -> std::expected<void, std::string>;
+
+    /**
+     * @brief Use a preset in the machine
+     *
+     * @details If the preset changes the variant, the machine resets and runs
+     *          the program. If not, execution continues. On failure, nothing changes.
+     */
+    [[nodiscard]]
+    auto apply_preset(const Preset& preset) -> std::expected<void, std::string>;
 
     /// True if the machine has a program. Without a program, the run controls do nothing.
     [[nodiscard]]

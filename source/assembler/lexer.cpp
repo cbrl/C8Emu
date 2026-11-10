@@ -182,6 +182,9 @@ auto classify_word(std::string_view word, WordPosition position) noexcept -> Wor
     if (lowercase == "i") {
         return WordKind::i_register;
     }
+    if (lowercase == "long") {
+        return WordKind::long_keyword;
+    }
     if (parse_v_register(word)) {
         return WordKind::v_register;
     }
@@ -277,6 +280,9 @@ auto label_name_error(std::string_view name) -> std::optional<std::string> {
 
     if ((lowercase == "i") || parse_v_register(name)) {
         return std::format("'{}' is a register name, so it cannot be a label", name);
+    }
+    if (lowercase == "long") {
+        return std::format("'{}' is a keyword (mov i, long nnnn), so it cannot be a label", name);
     }
     if (is_mnemonic(lowercase)) {
         return std::format("'{}' is an instruction name, so it cannot be a label", name);

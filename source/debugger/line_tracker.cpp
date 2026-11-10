@@ -25,7 +25,7 @@ constexpr uint32_t same_name_score = 3;
 
 
 // The instruction name or directive of a line, in lowercase. Empty if the line
-// writes no bytes: a blank line, a comment, a label alone, or org.
+// writes no bytes: a blank line, a comment, a label alone, org, or platform.
 auto statement_key(std::string_view line) -> std::string {
     const auto tokens = tokenize_line(line);
 
@@ -39,7 +39,7 @@ auto statement_key(std::string_view line) -> std::string {
     }
 
     auto key = to_lower_ascii(tokens[index].text);
-    return (key == "org") ? std::string{} : key;
+    return ((key == "org") || (key == "platform")) ? std::string{} : key;
 }
 
 

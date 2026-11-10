@@ -8,12 +8,13 @@
 
 #include "assembler/diagnostic.h"
 #include "assembler/source_map.h"
+#include "chip8/variant.h"
 
 namespace c8 {
 
 struct AssembleOptions {
-    uint16_t origin      = 0x200; ///< The address of the first program byte
-    size_t   memory_size = 4096;  ///< The program must end at or before this address
+    uint16_t origin  = 0x200;          ///< The address of the first program byte
+    Variant  variant = Variant::chip8; ///< The platform if the source has no `platform` line
 };
 
 /// A label and its address
@@ -29,6 +30,9 @@ struct Label {
 
 struct AssembleResult {
     uint16_t origin = 0x200;
+
+    /// The platform of the program: the `platform` line, or the default of the options
+    Variant variant = Variant::chip8;
 
     /// The program bytes, from the origin. Not usable when there are errors.
     std::vector<uint8_t> image;
@@ -64,6 +68,9 @@ struct AssembleResult {
  *          - `db n, ...`: write bytes
  *          - `dw n, ...`: write 16-bit words, high byte first. Labels are allowed.
  *          - `org address`: move forward to an address. Zeros fill the gap.
+ *          - `platform name`: the platform (chip8, hires, schip, or xochip). It
+ *            must come before the first instruction, data, or org line. The
+ *            platform sets the instructions and the memory size.
  *
  *          A line with only a number writes that number as a word.
  *

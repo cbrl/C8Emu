@@ -22,27 +22,26 @@ DisplayTexture::~DisplayTexture() {
 }
 
 
-auto DisplayTexture::update(const Display& display, uint32_t foreground_rgba, uint32_t background_rgba) -> void {
+auto DisplayTexture::update(const Display& display, const Palette& colors) -> void {
     const auto pixels = display.pixels();
 
     const bool resized = (display.width() != width) || (display.height() != height);
-    const bool recolored = (foreground_rgba != foreground) || (background_rgba != background);
+    const bool recolored = colors != palette;
 
-    // A 64x32 display has 2048 pixels, so the compare costs less than an upload
+    // A display has at most 8192 pixels, so the compare costs less than an upload
     if (!resized && !recolored && std::ranges::equal(pixels, uploaded_pixels)) {
         return;
     }
 
     uploaded_pixels.assign(pixels.begin(), pixels.end());
-    width      = display.width();
-    height     = display.height();
-    foreground = foreground_rgba;
-    background = background_rgba;
+    width   = display.width();
+    height  = display.height();
+    palette = colors;
 
     // The display holds pixel bits. The colors belong to the frontend.
     rgba.resize(pixels.size() * 4);
     for (size_t idx = 0; idx < pixels.size(); ++idx) {
-        const uint32_t color = (pixels[idx] != 0) ? foreground : background;
+        const uint32_t color = palette[static_cast<size_t>(pixels[idx] & Display::all_planes)];
         rgba[(idx * 4) + 0] = static_cast<uint8_t>(color >> 24);
         rgba[(idx * 4) + 1] = static_cast<uint8_t>(color >> 16);
         rgba[(idx * 4) + 2] = static_cast<uint8_t>(color >> 8);
