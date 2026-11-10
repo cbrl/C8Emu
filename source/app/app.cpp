@@ -61,6 +61,7 @@ auto App::run() -> void {
 
         emulate(timer.delta_time().count());
         log_stop_events();
+        log_logpoint_messages();
 
         // Beep only while the program runs, so a pause during a beep is silent
         beeper.set_active(debugger.is_running() && chip.sound_active());
@@ -171,6 +172,9 @@ auto App::show_disassembly() -> void {
     else {
         log_warning("The disassembly does not assemble, so the code editor cannot show the breakpoints");
     }
+
+    // The conditions and log messages use the labels of this program, or no labels
+    debugger.set_symbols(document.program_symbols());
 }
 
 
@@ -267,7 +271,7 @@ auto App::assemble_and_load() -> void {
     }
 
     // The breakpoints move with their lines to the new addresses
-    const auto remapped = remap_breakpoints(debugger.breakpoints(), document.lines(), result.map);
+    const auto remapped = remap_breakpoints(debugger.breakpoint_addresses(), document.lines(), result.map);
 
     // Keep a copy, because a change of platform checks the document again
     const auto image = result.image;
@@ -277,12 +281,13 @@ auto App::assemble_and_load() -> void {
     }
     document.set_default_platform(chip.variant());
 
-    debugger.replace_breakpoints(remapped.breakpoints);
+    debugger.move_breakpoints(remapped.moves);
     for (const auto address : remapped.dropped) {
         log_warning("Removed the breakpoint at 0x{:03X}: its line was deleted or writes no bytes now", address);
     }
 
     document.mark_loaded();
+    debugger.set_symbols(document.program_symbols());
 }
 
 
@@ -388,6 +393,13 @@ auto App::log_stop_events() -> void {
         default:
             log_info("{}", message);
             break;
+    }
+}
+
+
+auto App::log_logpoint_messages() -> void {
+    for (const auto& message : debugger.take_log_messages()) {
+        log_info("{}", message);
     }
 }
 

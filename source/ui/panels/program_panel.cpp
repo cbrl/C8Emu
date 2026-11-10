@@ -3,6 +3,7 @@
 #include "app/source_document.h"
 #include "chip8/chip8.h"
 #include "debugger/debugger.h"
+#include "ui/breakpoint_marker.h"
 
 #include <algorithm>
 #include <string>
@@ -11,29 +12,27 @@ namespace c8 {
 
 namespace {
 
-constexpr ImU32 pc_row_color     = IM_COL32(255, 200, 0, 60);
-constexpr ImU32 breakpoint_color = IM_COL32(230, 60, 60, 255);
-constexpr auto  label_color      = ImVec4{0.35f, 0.70f, 0.61f, 1.0f};
+constexpr ImU32 pc_row_color = IM_COL32(255, 200, 0, 60);
+constexpr auto  label_color  = ImVec4{0.35f, 0.70f, 0.61f, 1.0f};
 
 
-// The breakpoint dot of a row. Returns true if the user clicked it.
-auto breakpoint_dot(bool has_breakpoint) -> bool {
+// The breakpoint marker of a row. Returns true if the user clicked it.
+auto breakpoint_dot(const Breakpoint* breakpoint) -> bool {
     const float size = ImGui::GetTextLineHeight();
     const ImVec2 pos = ImGui::GetCursorScreenPos();
 
     const bool clicked = ImGui::InvisibleButton("##breakpoint", {size, size});
     const ImVec2 center = {pos.x + (size * 0.5f), pos.y + (size * 0.5f)};
-    const float radius = size * 0.3f;
 
-    auto* draw_list = ImGui::GetWindowDrawList();
-    if (has_breakpoint) {
-        draw_list->AddCircleFilled(center, radius, breakpoint_color);
-    }
-    else if (ImGui::IsItemHovered()) {
-        draw_list->AddCircle(center, radius, breakpoint_color);
-    }
+    draw_breakpoint_marker(*ImGui::GetWindowDrawList(), center, size * 0.3f, breakpoint, ImGui::IsItemHovered());
 
-    ImGui::SetItemTooltip("%s", has_breakpoint ? "Remove the breakpoint" : "Add a breakpoint");
+    if (breakpoint == nullptr) {
+        ImGui::SetItemTooltip("Add a breakpoint");
+    }
+    else {
+        const auto summary = breakpoint_summary(*breakpoint);
+        ImGui::SetItemTooltip("Remove the breakpoint%s%s", summary.empty() ? "" : "\n", summary.c_str());
+    }
     return clicked;
 }
 
@@ -150,7 +149,7 @@ auto ProgramPanel::draw(UiContext& context) -> void {
                 }
 
                 ImGui::TableNextColumn();
-                if (breakpoint_dot(debugger.has_breakpoint(address))) {
+                if (breakpoint_dot(debugger.find_breakpoint(address))) {
                     (void)debugger.toggle_breakpoint(address);
                 }
 

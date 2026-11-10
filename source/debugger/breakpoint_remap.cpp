@@ -15,7 +15,7 @@ auto remap_breakpoints(const std::set<uint16_t>& breakpoints, const LineTracker&
 
         // Not in the loaded program, so no line holds it
         if (old_span == nullptr) {
-            result.breakpoints.insert(address);
+            result.moves.emplace(address, address);
             continue;
         }
 
@@ -29,7 +29,7 @@ auto remap_breakpoints(const std::set<uint16_t>& breakpoints, const LineTracker&
 
         const auto offset = static_cast<uint16_t>(address - old_span->address);
         const auto new_offset = (offset < new_span->size) ? offset : uint16_t{0};
-        result.breakpoints.insert(static_cast<uint16_t>(new_span->address + new_offset));
+        result.moves.emplace(address, static_cast<uint16_t>(new_span->address + new_offset));
     }
 
     return result;

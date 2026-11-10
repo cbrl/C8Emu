@@ -25,15 +25,26 @@ auto build_default_layout(ImGuiID dockspace_id) -> void {
     ImGui::DockBuilderDockWindow("Chip8 Settings", left_top);
     ImGui::DockBuilderDockWindow("Registers", registers);
     ImGui::DockBuilderDockWindow("Stack", stack);
+    ImGui::DockBuilderDockWindow("Watch", stack);
     ImGui::DockBuilderDockWindow("Display", center_top);
     ImGui::DockBuilderDockWindow("Memory", center_bottom);
     ImGui::DockBuilderDockWindow("Log", center_bottom);
+    ImGui::DockBuilderDockWindow("Trace", center_bottom);
+    ImGui::DockBuilderDockWindow("Profiler", center_bottom);
     ImGui::DockBuilderDockWindow("Code Editor", right_top);
     ImGui::DockBuilderDockWindow("Program", right_bottom);
     ImGui::DockBuilderDockWindow("Breakpoints", right_bottom);
     ImGui::DockBuilderDockWindow("Syntax Reference", right_bottom);
 
     ImGui::DockBuilderFinish(dockspace_id);
+}
+
+
+auto dock_with_on_first_use(const char* window_name) -> void {
+    const auto* other = ImGui::FindWindowByName(window_name);
+    if ((other != nullptr) && (other->DockId != 0)) {
+        ImGui::SetNextWindowDockID(other->DockId, ImGuiCond_FirstUseEver);
+    }
 }
 
 } // namespace c8

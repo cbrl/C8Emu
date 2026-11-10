@@ -517,6 +517,33 @@ auto execute_opcode(MachineState& s, const Quirks& q, Variant variant, uint16_t 
 } // namespace
 
 
+auto memory_access(const MachineState& state, uint16_t word, Variant variant) noexcept -> MemoryAccess {
+    const auto x = static_cast<uint32_t>((word >> 8) & 0xFu);
+    const auto y = static_cast<uint32_t>((word >> 4) & 0xFu);
+    const auto n = static_cast<uint32_t>(word & 0xFu);
+    const uint32_t i = state.i;
+
+    // 5XY2 and 5XY3 use the registers from X to Y, in either order
+    const uint32_t range = ((x > y) ? (x - y) : (y - x)) + 1;
+
+    switch (decode(word, variant)) {
+        case Op::drw: {
+            const bool wide = (n == 0) && has_schip(variant);
+            const uint32_t bytes = wide ? 32u : n;
+            const uint8_t planes = has_xochip(variant) ? static_cast<uint8_t>(state.planes & Display::all_planes) : uint8_t{1};
+            return {.read_address = i, .read_length = bytes * static_cast<uint32_t>(std::popcount(planes))};
+        }
+        case Op::bcd:       return {.write_address = i, .write_length = 3};
+        case Op::str:       return {.write_address = i, .write_length = x + 1};
+        case Op::ld:        return {.read_address = i, .read_length = x + 1};
+        case Op::str_range: return {.write_address = i, .write_length = range};
+        case Op::ld_range:  return {.read_address = i, .read_length = range};
+        case Op::audio:     return {.read_address = i, .read_length = 16};
+        default:            return {};
+    }
+}
+
+
 auto execute(MachineState& s, const Quirks& q, Variant variant, uint16_t opcode) noexcept -> ExecResult {
     const auto result = execute_opcode(s, q, variant, opcode);
 

@@ -55,6 +55,7 @@ auto SourceDocument::replace(std::string_view new_text, std::filesystem::path so
 
     tracker.clear();
     loaded_labels.clear();
+    loaded_symbols.clear();
     ++labels_version;
     markers_valid = false;
 
@@ -96,6 +97,13 @@ auto SourceDocument::mark_loaded() -> void {
         return label.kind == LabelKind::label;
     });
     std::ranges::stable_sort(loaded_labels, {}, &Label::value);
+
+    loaded_symbols.clear();
+    for (const auto& label : checked.labels) {
+        if (label.known) {
+            loaded_symbols.emplace(label.name, label.value);
+        }
+    }
     ++labels_version;
 }
 

@@ -1,6 +1,8 @@
 #include "stack_panel.h"
 
+#include "app/source_document.h"
 #include "chip8/chip8.h"
+#include "debugger/address_names.h"
 #include "util/strings.h"
 
 #include <algorithm>
@@ -13,34 +15,63 @@ namespace c8 {
 
 auto StackPanel::draw(UiContext& context) -> void {
     const float font_size = ImGui::GetFontSize();
-    ImGui::SetNextWindowSize({font_size * 9.0f, font_size * 25.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({font_size * 14.0f, font_size * 25.0f}, ImGuiCond_FirstUseEver);
 
-    if (ImGui::Begin(title(), &open)) {
-        auto& state = context.chip.state();
+    if (!ImGui::Begin(title(), &open)) {
+        ImGui::End();
+        return;
+    }
 
-        ImGui::Text("Stack");
-        ImGui::Separator();
+    auto& state = context.chip.state();
+    const auto& labels = context.document.program_labels();
+
+    constexpr auto table_flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY;
+    if (ImGui::BeginTable("##stack", 3, table_flags)) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("##depth", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Address", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("Location", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableHeadersRow();
+
+        // The current location first, then each return address, newest first
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("PC");
+        ImGui::TableNextColumn();
+        ImGui::Text("0x%04X", state.pc);
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(address_name(state.pc, labels).c_str());
 
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{0, 0});
 
         const int depth = std::min<int>(state.sp, MachineState::stack_depth);
-        for (int i = depth - 1; i >= 0; --i) {
-            auto& entry = state.stack[static_cast<size_t>(i)];
-            auto value_str = std::format("0x{:04X}", entry);
+        for (int index = depth - 1; index >= 0; --index) {
+            auto& entry = state.stack[static_cast<size_t>(index)];
+            auto value_text = std::format("0x{:04X}", entry);
 
-            ImGui::PushID(i);
-            ImGui::Text("%02d:", i);
-            ImGui::SameLine();
+            ImGui::PushID(index);
+            ImGui::TableNextRow();
 
-            ImGui::SetNextItemWidth(ImGui::CalcTextSize(value_str.c_str()).x);
-            if (ImGui::InputText("##stack", &value_str, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
-                entry = parse_hex<uint16_t>(value_str).value_or(entry);
+            ImGui::TableNextColumn();
+            ImGui::Text("%02d", index);
+
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(ImGui::CalcTextSize(value_text.c_str()).x);
+            if (ImGui::InputText("##return", &value_text, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
+                entry = parse_hex<uint16_t>(value_text).value_or(entry);
             }
+            ImGui::SetItemTooltip("The return address. Edit it and press Enter.");
+
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(address_name(entry, labels).c_str());
+
             ImGui::PopID();
         }
 
         ImGui::PopStyleVar();
+        ImGui::EndTable();
     }
+
     ImGui::End();
 }
 

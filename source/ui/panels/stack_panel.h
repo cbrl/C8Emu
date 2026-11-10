@@ -4,7 +4,7 @@
 
 namespace c8 {
 
-/// The return addresses on the stack, newest first. Each value can be edited.
+/// The PC and the return addresses on the stack, newest first, with the labels of the program. Each return address can be edited.
 class StackPanel final : public Panel {
 public:
     [[nodiscard]]

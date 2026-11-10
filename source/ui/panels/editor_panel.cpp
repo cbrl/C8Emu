@@ -4,6 +4,7 @@
 #include "chip8/chip8.h"
 #include "debugger/debugger.h"
 #include "frontend/rom_files.h"
+#include "ui/breakpoint_marker.h"
 #include "ui/command_ui.h"
 #include "ui/editor_assist.h"
 #include "util/log.h"
@@ -28,7 +29,6 @@ constexpr size_t gutter_glyphs = 2;
 constexpr auto error_color   = ImVec4{1.0f, 0.45f, 0.45f, 1.0f};
 constexpr auto warning_color = ImVec4{0.95f, 0.75f, 0.25f, 1.0f};
 
-constexpr ImU32 breakpoint_color = IM_COL32(230, 60, 60, 255);
 constexpr ImU32 pc_arrow_color   = IM_COL32(255, 200, 0, 255);
 constexpr ImU32 pc_outline_color = IM_COL32(60, 45, 0, 255);
 
@@ -90,13 +90,8 @@ auto draw_line_gutter(UiContext& context, const TextEditor::Decorator& decorator
     const ImVec2 center = {pos.x + (size.x * 0.5f), pos.y + (size.y * 0.5f)};
     const float radius = std::min(size.x, size.y) * 0.3f;
 
-    const bool has_breakpoint = (span != nullptr) && context.debugger.has_breakpoint_in(span->address, span->size);
-    if (has_breakpoint) {
-        draw_list.AddCircleFilled(center, radius, breakpoint_color);
-    }
-    else if (hovered) {
-        draw_list.AddCircle(center, radius, breakpoint_color);
-    }
+    const auto* breakpoint = (span != nullptr) ? context.debugger.first_breakpoint_in(span->address, span->size) : nullptr;
+    draw_breakpoint_marker(draw_list, center, radius, breakpoint, hovered);
 
     const bool at_pc = (pc_line == line);
     if (at_pc) {
@@ -110,10 +105,16 @@ auto draw_line_gutter(UiContext& context, const TextEditor::Decorator& decorator
     // A line with no bytes toggles the breakpoint of the next line with bytes
     auto tooltip = std::string{};
     if (const auto bytes = context.document.bytes_of_line(line)) {
-        const bool exists = context.debugger.has_breakpoint_in(bytes->address, bytes->size);
-        tooltip = std::format("{} the breakpoint at 0x{:03X}", exists ? "Remove" : "Add", bytes->address);
+        const auto* existing = context.debugger.first_breakpoint_in(bytes->address, bytes->size);
+        tooltip = std::format("{} the breakpoint at 0x{:03X}", (existing != nullptr) ? "Remove" : "Add", bytes->address);
         if (bytes->line != line) {
             tooltip += std::format(" (line {})", bytes->line + 1);
+        }
+        if (existing != nullptr) {
+            if (const auto summary = breakpoint_summary(*existing); !summary.empty()) {
+                tooltip += '\n';
+                tooltip += summary;
+            }
         }
     }
     else {

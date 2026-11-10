@@ -22,6 +22,34 @@ struct ExecResult {
 };
 
 
+/// The data memory that an instruction reads and writes. An address wraps at the end of memory.
+struct MemoryAccess {
+    uint32_t read_address  = 0;
+    uint32_t read_length   = 0; ///< 0 if the instruction reads no data
+    uint32_t write_address = 0;
+    uint32_t write_length  = 0; ///< 0 if the instruction writes no data
+
+    [[nodiscard]]
+    auto empty() const noexcept -> bool {
+        return (read_length == 0) && (write_length == 0);
+    }
+};
+
+/**
+ * @brief The data memory that an instruction will read and write
+ *
+ * @details The access is for the state before the instruction runs. The
+ *          fetch of the instruction words does not count. A draw reads all
+ *          rows of the sprite, also rows that the display edge clips.
+ *
+ * @param[in] state    The machine state before the instruction
+ * @param[in] word     The first instruction word
+ * @param[in] variant  The instruction set
+ */
+[[nodiscard]]
+auto memory_access(const MachineState& state, uint16_t word, Variant variant) noexcept -> MemoryAccess;
+
+
 /**
  * @brief Execute one instruction
  *

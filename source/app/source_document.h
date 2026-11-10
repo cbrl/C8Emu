@@ -12,6 +12,7 @@
 #include <imgui-color-text-edit/TextEditor.h>
 
 #include "assembler/assembler.h"
+#include "debugger/debug_expression.h"
 #include "debugger/line_tracker.h"
 
 namespace c8 {
@@ -112,7 +113,13 @@ public:
         return loaded_labels;
     }
 
-    /// A count that changes when the program labels change
+    /// The labels and the known constants of the program that last loaded from the text, for debugger expressions
+    [[nodiscard]]
+    auto program_symbols() const noexcept -> const SymbolTable& {
+        return loaded_symbols;
+    }
+
+    /// A count that changes when the program labels and symbols change
     [[nodiscard]]
     auto program_labels_version() const noexcept -> uint64_t {
         return labels_version;
@@ -164,6 +171,7 @@ private:
 
     LineTracker tracker;
     std::vector<Label> loaded_labels;
+    SymbolTable loaded_symbols;
     uint64_t labels_version = 0;
 
     AssembleResult checked;

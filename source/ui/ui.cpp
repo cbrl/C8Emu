@@ -8,11 +8,14 @@
 #include "ui/panels/editor_panel.h"
 #include "ui/panels/log_panel.h"
 #include "ui/panels/memory_panel.h"
+#include "ui/panels/profiler_panel.h"
 #include "ui/panels/program_panel.h"
 #include "ui/panels/registers_panel.h"
 #include "ui/panels/settings_panel.h"
 #include "ui/panels/stack_panel.h"
 #include "ui/panels/syntax_reference_panel.h"
+#include "ui/panels/trace_panel.h"
+#include "ui/panels/watch_panel.h"
 #include "ui/status_bar.h"
 
 #include <optional>
@@ -92,8 +95,11 @@ Ui::Ui() {
     panels.push_back(std::make_unique<DisplayPanel>());
     panels.push_back(std::make_unique<RegistersPanel>());
     panels.push_back(std::make_unique<StackPanel>());
+    panels.push_back(std::make_unique<WatchPanel>());
     panels.push_back(std::make_unique<ProgramPanel>());
     panels.push_back(std::make_unique<BreakpointsPanel>());
+    panels.push_back(std::make_unique<TracePanel>());
+    panels.push_back(std::make_unique<ProfilerPanel>());
     panels.push_back(std::make_unique<EditorPanel>());
     panels.push_back(std::make_unique<SyntaxReferencePanel>());
     panels.push_back(std::make_unique<MemoryPanel>());

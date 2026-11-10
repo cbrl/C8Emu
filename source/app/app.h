@@ -87,6 +87,9 @@ private:
     // Write each stop of execution to the log
     auto log_stop_events() -> void;
 
+    // Write the messages of the logpoints to the log
+    auto log_logpoint_messages() -> void;
+
     // Do a command from a menu, a button, or a shortcut. A command that discards
     // unsaved source changes waits for an answer to a prompt first.
     auto execute(Command command) -> void;

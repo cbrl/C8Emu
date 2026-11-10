@@ -30,9 +30,14 @@ add_library(
     source/chip8/quirks.cpp
     source/chip8/isa/isa.cpp
     source/audio/tone_generator.cpp
+    source/debugger/address_names.cpp
     source/debugger/breakpoint_remap.cpp
+    source/debugger/debug_expression.cpp
     source/debugger/debugger.cpp
     source/debugger/line_tracker.cpp
+    source/debugger/profiler.cpp
+    source/debugger/trace.cpp
+    source/debugger/watchpoints.cpp
     source/frontend/rom_files.cpp
     source/util/log.cpp
 )
@@ -65,6 +70,7 @@ add_executable(
     source/platform/display_texture.cpp
     source/platform/file_dialogs.cpp
     source/platform/platform.cpp
+    source/ui/breakpoint_marker.cpp
     source/ui/chip8_language.cpp
     source/ui/command_ui.cpp
     source/ui/dock_layout.cpp
@@ -78,11 +84,14 @@ add_executable(
     source/ui/panels/editor_panel.cpp
     source/ui/panels/log_panel.cpp
     source/ui/panels/memory_panel.cpp
+    source/ui/panels/profiler_panel.cpp
     source/ui/panels/program_panel.cpp
     source/ui/panels/registers_panel.cpp
     source/ui/panels/settings_panel.cpp
     source/ui/panels/stack_panel.cpp
     source/ui/panels/syntax_reference_panel.cpp
+    source/ui/panels/trace_panel.cpp
+    source/ui/panels/watch_panel.cpp
 )
 add_executable(c8emu::exe ALIAS c8emu_exe)
 
