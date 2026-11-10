@@ -1,5 +1,6 @@
 #include "assembler.h"
 
+#include "assembler/expression.h"
 #include "assembler/forms.h"
 #include "assembler/lexer.h"
 
@@ -19,7 +20,6 @@ namespace {
 struct Field {
     std::string_view name;
     uint32_t         bits;
-    bool             allow_label;
 
     [[nodiscard]]
     constexpr auto max() const noexcept -> int64_t {
@@ -33,12 +33,21 @@ struct Field {
     }
 };
 
-constexpr auto field_nnn  = Field{.name = "nnn", .bits = 12, .allow_label = true};
-constexpr auto field_nn   = Field{.name = "nn", .bits = 8, .allow_label = false};
-constexpr auto field_n    = Field{.name = "n", .bits = 4, .allow_label = false};
-constexpr auto field_byte = Field{.name = "a byte", .bits = 8, .allow_label = false};
-constexpr auto field_word = Field{.name = "a word", .bits = 16, .allow_label = true};
-constexpr auto field_nnnn = Field{.name = "nnnn", .bits = 16, .allow_label = true};
+constexpr auto field_nnn  = Field{.name = "nnn", .bits = 12};
+constexpr auto field_nn   = Field{.name = "nn", .bits = 8};
+constexpr auto field_n    = Field{.name = "n", .bits = 4};
+constexpr auto field_byte = Field{.name = "a byte", .bits = 8};
+constexpr auto field_word = Field{.name = "a word", .bits = 16};
+constexpr auto field_nnnn = Field{.name = "nnnn", .bits = 16};
+
+// The largest count of `ds` and size of `align`
+constexpr int64_t max_space = 0x10000;
+
+
+// A value as the assembler language writes it: 0x2A, or #-5 for a negative value
+auto format_value(int64_t value) -> std::string {
+    return (value < 0) ? std::format("#{}", value) : std::format("0x{:X}", value);
+}
 
 
 // The words of an encoded instruction. Only F000 NNNN has a second word.
@@ -53,6 +62,7 @@ enum class StatementKind : uint8_t {
     data_word, // A line with only a number
     bytes,     // db
     words,     // dw
+    space,     // ds
 };
 
 // One line that writes bytes
@@ -64,6 +74,30 @@ struct Statement {
     Token              head;
     std::vector<Token> operands;
     bool               failed  = false; // The first pass found an error, so the second pass skips it
+};
+
+
+// A constant from `name equ value`. The value is calculated when a line first needs it.
+struct Constant {
+    enum class State : uint8_t {
+        pending,    // Not calculated yet
+        evaluating, // The calculation is in progress. A use now is a loop.
+        done,
+        failed,     // The value has an error. The error is reported on the line of the constant.
+    };
+
+    std::string                name;       // As written
+    uint32_t                   line  = 0;
+    size_t                     label = 0;  // The index in AssembleResult::labels
+    std::optional<Expression>  expression; // std::nullopt if the value has a syntax error
+    State                      state = State::pending;
+};
+
+
+// A name that the source defines
+struct Symbol {
+    LabelKind kind  = LabelKind::label;
+    size_t    index = 0; // The index in AssembleResult::labels for a label, in the constants for a constant
 };
 
 
@@ -84,7 +118,12 @@ public:
             scan_line(static_cast<uint32_t>(line), lines[line]);
         }
 
-        // The image ends after the last byte that a line writes. A trailing org adds nothing.
+        // All labels have their addresses now, so each constant gets its value or reports its error
+        for (size_t index = 0; index < constants.size(); ++index) {
+            (void)constant_value(index);
+        }
+
+        // The image ends after the last byte that a line writes. A trailing org or align adds nothing.
         uint32_t end = options.origin;
         for (const auto& statement : statements) {
             if (!statement.failed) {
@@ -109,27 +148,31 @@ private:
     // Diagnostics
     //--------------------------------------------------------------------------------
 
-    auto report(Severity severity, uint32_t line, const Token& token, std::string message) -> void {
+    auto report(Severity severity, uint32_t line, uint32_t column, uint32_t length, std::string message) -> void {
         result.diagnostics.push_back(Diagnostic{
             .severity = severity,
             .line     = line,
-            .column   = token.column,
-            .length   = token.length,
+            .column   = column,
+            .length   = length,
             .message  = std::move(message),
         });
     }
 
     auto error(uint32_t line, const Token& token, std::string message) -> void {
-        report(Severity::error, line, token, std::move(message));
+        report(Severity::error, line, token.column, token.length, std::move(message));
+    }
+
+    auto error(uint32_t line, const ExpressionError& failure) -> void {
+        report(Severity::error, line, failure.column, failure.length, failure.message);
     }
 
     auto warning(uint32_t line, const Token& token, std::string message) -> void {
-        report(Severity::warning, line, token, std::move(message));
+        report(Severity::warning, line, token.column, token.length, std::move(message));
     }
 
 
     //--------------------------------------------------------------------------------
-    // First pass: addresses and labels
+    // First pass: addresses, labels, and constants
     //--------------------------------------------------------------------------------
 
     auto scan_line(uint32_t line, std::string_view text) -> void {
@@ -160,8 +203,27 @@ private:
         const auto& head = tokens[index];
         auto operands = std::vector<Token>(tokens.begin() + static_cast<std::ptrdiff_t>(index) + 1, tokens.end());
 
-        // A label on an org line gets the address after the org
+        // name equ value
+        if (defines_constant(tokens, index)) {
+            if (label != nullptr) {
+                define_label(line, *label);
+            }
+            define_constant(line, head, operands);
+            return;
+        }
+
         const auto lowercase = to_lower_ascii(head.text);
+
+        if (lowercase == "equ") {
+            if (label != nullptr) {
+                error(line, *label, "A constant has no ':'. Write: name equ value");
+            }
+            else {
+                error(line, head, "'equ' needs a name before it. Write: name equ value");
+            }
+            return;
+        }
+
         if (lowercase == "platform") {
             if (label != nullptr) {
                 define_label(line, *label);
@@ -169,8 +231,15 @@ private:
             set_platform(line, head, operands);
             return;
         }
-        if (lowercase == "org") {
-            org(line, head, operands);
+
+        // A label on an org or align line gets the address after the move
+        if ((lowercase == "org") || (lowercase == "align")) {
+            if (lowercase == "org") {
+                org(line, head, operands);
+            }
+            else {
+                align(line, head, operands);
+            }
             if (label != nullptr) {
                 define_label(line, *label);
             }
@@ -188,7 +257,8 @@ private:
                 // Warn at the first instruction of a run at odd addresses only, because the cause is before the run
                 if (odd && (location != odd_run_end)) {
                     warning(line, head, std::format(
-                        "The instruction is at an odd address (0x{:03X}). Data before it probably has an odd number of bytes.",
+                        "The instruction is at an odd address (0x{:03X}). Data before it probably has an odd number of bytes. "
+                        "'align 2' moves to an even address.",
                         location));
                 }
                 const auto size = instruction_size(operands);
@@ -201,7 +271,13 @@ private:
             }
 
             case WordKind::directive: {
+                if (lowercase == "ds") {
+                    space(line, head, std::move(operands));
+                    break;
+                }
+
                 if (operands.empty()) {
+                    body_started = true;
                     error(line, head, std::format("'{}' needs at least one value", head.text));
                     break;
                 }
@@ -224,6 +300,7 @@ private:
                 error(line, head, unknown_instruction_message(head.text));
 
                 // Keep the space of an instruction, so the addresses after this line do not move
+                body_started = true;
                 location += 2;
                 break;
             }
@@ -324,14 +401,8 @@ private:
         }
 
         const auto& operand = operands.front();
-        if (classify_word(operand.text, WordPosition::operand) != WordKind::number) {
-            error(line, operand, "'org' needs a number. A label is not allowed here.");
-            return;
-        }
-
-        const auto value = parse_number(operand.text);
+        const auto value = first_pass_value(line, operand, "org");
         if (!value) {
-            error(line, operand, value.error());
             return;
         }
 
@@ -339,37 +410,276 @@ private:
             error(line, operand, std::format("'org' cannot move back. The address is already 0x{:03X}.", location));
         }
         else if (*value > static_cast<int64_t>(memory_end())) {
-            error(line, operand, std::format("0x{:X} is past the end of memory (0x{:X})", *value, memory_end()));
+            error(line, operand, std::format("{} is past the end of memory (0x{:X})", format_value(*value), memory_end()));
         }
         else {
             location = static_cast<uint32_t>(*value);
         }
     }
 
+    auto align(uint32_t line, const Token& head, const std::vector<Token>& operands) -> void {
+        body_started = true;
+
+        if (operands.size() != 1) {
+            error(line, head, "'align' needs one size, a power of two");
+            return;
+        }
+
+        const auto& operand = operands.front();
+        const auto value = first_pass_value(line, operand, "align");
+        if (!value) {
+            return;
+        }
+
+        if ((*value < 1) || (*value > max_space) || ((*value & (*value - 1)) != 0)) {
+            error(line, operand, std::format(
+                "The size of 'align' must be a power of two from 1 to 0x{:X}, not {}", max_space, format_value(*value)));
+            return;
+        }
+
+        const auto size = static_cast<uint32_t>(*value);
+        const auto aligned = ((location + size - 1) / size) * size;
+        if (aligned > memory_end()) {
+            error(line, operand, std::format("'align' moves to 0x{:X}, past the end of memory (0x{:X})", aligned, memory_end()));
+            return;
+        }
+
+        location = aligned;
+    }
+
+    auto space(uint32_t line, const Token& head, std::vector<Token> operands) -> void {
+        body_started = true;
+
+        if (operands.empty() || (operands.size() > 2)) {
+            error(line, head, "'ds' needs a count and can have a fill byte. Write: ds count [fill]");
+            return;
+        }
+
+        const auto count = first_pass_value(line, operands.front(), "ds");
+        if (!count) {
+            return;
+        }
+
+        if ((*count < 0) || (*count > max_space)) {
+            error(line, operands.front(), std::format("The count of 'ds' must be 0 to 0x{:X}, not {}", max_space, format_value(*count)));
+            return;
+        }
+
+        add_statement(StatementKind::space, line, head, std::move(operands), static_cast<uint32_t>(*count));
+    }
+
+    // Report an error and return false if a name cannot be defined
+    auto check_new_name(uint32_t line, const Token& token, std::string_view name, std::string_view kind) -> bool {
+        if (const auto problem = label_name_error(name, kind)) {
+            error(line, token, *problem);
+            return false;
+        }
+
+        if (const auto it = symbols.find(to_lower_ascii(name)); it != symbols.end()) {
+            const auto& symbol = it->second;
+            const auto other_line = (symbol.kind == LabelKind::label)
+                ? result.labels[symbol.index].line
+                : constants[symbol.index].line;
+            error(line, token, std::format("The name '{}' is already defined on line {}", name, other_line + 1));
+            return false;
+        }
+
+        return true;
+    }
+
     auto define_label(uint32_t line, const Token& token) -> void {
         auto name = token.text;
         name.remove_suffix(1); // ':'
 
-        if (const auto problem = label_name_error(name)) {
-            error(line, token, *problem);
+        if (!check_new_name(line, token, name, "label")) {
             return;
         }
 
         auto key = to_lower_ascii(name);
+        symbols.emplace(key, Symbol{.kind = LabelKind::label, .index = result.labels.size()});
+        result.labels.push_back(Label{
+            .name  = std::move(key),
+            .kind  = LabelKind::label,
+            .value = location,
+            .line  = line,
+        });
+    }
 
-        if (const auto it = label_index.find(key); it != label_index.end()) {
-            error(line, token, std::format(
-                "The label '{}' is already defined on line {}", name, result.labels[it->second].line + 1));
+    // name equ value. operands[0] is "equ".
+    auto define_constant(uint32_t line, const Token& name, const std::vector<Token>& operands) -> void {
+        if (!check_new_name(line, name, name.text, "constant")) {
             return;
         }
 
-        label_index.emplace(key, result.labels.size());
-        label_locations.push_back(location);
+        auto constant = Constant{
+            .name  = std::string{name.text},
+            .line  = line,
+            .label = result.labels.size(),
+            .state = Constant::State::failed,
+        };
+
+        if (operands.size() < 2) {
+            error(line, operands.front(), "'equ' needs a value. Write: name equ value");
+        }
+        else {
+            if (operands.size() > 2) {
+                error(line, operands[2], "A constant has one value. Put an expression with spaces in parentheses.");
+            }
+
+            const auto& value = operands[1];
+            if (auto expression = parse_expression(value.text, value.column)) {
+                constant.expression = std::move(*expression);
+                constant.state = Constant::State::pending;
+            }
+            else {
+                error(line, expression.error());
+            }
+        }
+
+        auto key = to_lower_ascii(name.text);
+        symbols.emplace(key, Symbol{.kind = LabelKind::constant, .index = constants.size()});
         result.labels.push_back(Label{
-            .name    = std::move(key),
-            .address = static_cast<uint16_t>(location),
-            .line    = line,
+            .name  = std::move(key),
+            .kind  = LabelKind::constant,
+            .known = false,
+            .line  = line,
         });
+        constants.push_back(std::move(constant));
+    }
+
+
+    //--------------------------------------------------------------------------------
+    // Values
+    //--------------------------------------------------------------------------------
+
+    // The value of a label or a constant. In the first pass, only the names before the line are defined.
+    auto name_value(std::string_view name) -> std::expected<int64_t, std::string> {
+        const auto it = symbols.find(to_lower_ascii(name));
+
+        if (it == symbols.end()) {
+            if (!first_pass_user.empty()) {
+                return std::unexpected(std::format(
+                    "'{}' is not defined before this line. '{}' can use only the labels and constants before it.", name, first_pass_user));
+            }
+            return std::unexpected(std::format("'{}' is not defined", name));
+        }
+
+        const auto& symbol = it->second;
+        if (symbol.kind == LabelKind::label) {
+            return result.labels[symbol.index].value;
+        }
+        return constant_value(symbol.index);
+    }
+
+    auto constant_value(size_t index) -> std::expected<int64_t, std::string> {
+        auto& constant = constants[index];
+        auto& label = result.labels[constant.label];
+
+        switch (constant.state) {
+            case Constant::State::done: {
+                return label.value;
+            }
+            case Constant::State::failed: {
+                return std::unexpected(std::format("The constant '{}' on line {} has an error", constant.name, constant.line + 1));
+            }
+            case Constant::State::evaluating: {
+                return std::unexpected(std::format("'{}' depends on its own value", constant.name));
+            }
+            case Constant::State::pending: {
+                break;
+            }
+        }
+
+        // An evaluation adds no labels or constants, so the references stay valid
+        constant.state = Constant::State::evaluating;
+        const auto value = evaluate(*constant.expression, lookup);
+
+        if (value) {
+            constant.state = Constant::State::done;
+            label.value = *value;
+            label.known = true;
+            return *value;
+        }
+
+        // In the first pass, a later label can still give the constant a value
+        if (!first_pass_user.empty()) {
+            constant.state = Constant::State::pending;
+            return std::unexpected(std::format("'{}' has no value at this line: {}", constant.name, value.error().message));
+        }
+
+        constant.state = Constant::State::failed;
+        error(constant.line, value.error());
+        return std::unexpected(std::format("The constant '{}' on line {} has an error", constant.name, constant.line + 1));
+    }
+
+    // The value of an operand. Reports an error and returns std::nullopt if the operand has no value.
+    auto operand_value(uint32_t line, const Token& token) -> std::optional<int64_t> {
+        // Most operands are one number or one name. They need no expression, so a large data table stays fast.
+        switch (classify_word(token.text, WordPosition::operand)) {
+            case WordKind::number: {
+                // A word with a number prefix can also be an expression ("#7%#4") or have an error.
+                // The expression gives its value or the error.
+                if (const auto value = parse_number(token.text)) {
+                    return *value;
+                }
+                break;
+            }
+            case WordKind::label: {
+                const auto value = name_value(token.text);
+                if (!value) {
+                    error(line, token, value.error());
+                    return std::nullopt;
+                }
+                return *value;
+            }
+            default: {
+                break;
+            }
+        }
+
+        const auto expression = parse_expression(token.text, token.column);
+        if (!expression) {
+            error(line, expression.error());
+            return std::nullopt;
+        }
+
+        const auto value = evaluate(*expression, lookup);
+        if (!value) {
+            error(line, value.error());
+            return std::nullopt;
+        }
+        return *value;
+    }
+
+    // The value of an operand of org, ds, or align. It can use only the labels and constants before the line.
+    auto first_pass_value(uint32_t line, const Token& token, std::string_view directive) -> std::optional<int64_t> {
+        first_pass_user = directive;
+        const auto value = operand_value(line, token);
+        first_pass_user = {};
+        return value;
+    }
+
+    // The value of an operand for a field. Reports an error and returns std::nullopt if the value does not fit.
+    [[nodiscard]]
+    auto value_of(uint32_t line, const Token& token, const Field& field) -> std::optional<uint32_t> {
+        const auto value = operand_value(line, token);
+        if (!value) {
+            return std::nullopt;
+        }
+
+        if ((*value < field.min()) || (*value > field.max())) {
+            const auto range = std::format("Use 0 to 0x{:X}, or #{} to #-1.", field.max(), field.min());
+
+            if (classify_word(token.text, WordPosition::operand) == WordKind::number) {
+                error(line, token, std::format("'{}' does not fit in {}. {}", token.text, field.name, range));
+            }
+            else {
+                error(line, token, std::format("'{}' is {}, so it does not fit in {}. {}", token.text, format_value(*value), field.name, range));
+            }
+            return std::nullopt;
+        }
+
+        return static_cast<uint32_t>(*value & field.max());
     }
 
 
@@ -427,6 +737,19 @@ private:
                 }
                 break;
             }
+
+            case StatementKind::space: {
+                // The image starts as zeros, so only a fill that is not zero writes bytes
+                if (statement.operands.size() < 2) {
+                    break;
+                }
+                if (const auto fill = value_of(line, statement.operands[1], field_byte); fill && (*fill != 0)) {
+                    for (uint32_t i = 0; i < statement.size; ++i) {
+                        write_byte(statement.address + i, static_cast<uint8_t>(*fill));
+                    }
+                }
+                break;
+            }
         }
     }
 
@@ -435,24 +758,6 @@ private:
         const auto line = statement.line;
         const auto mnemonic = to_lower_ascii(statement.head.text);
         const auto& operands = statement.operands;
-
-        // The operand kinds that each word can fill
-        const auto fits = [](OperandKind kind, WordKind word) {
-            switch (kind) {
-                case OperandKind::vx:
-                case OperandKind::vy:
-                case OperandKind::v0:      return word == WordKind::v_register;
-                case OperandKind::i:       return word == WordKind::i_register;
-                case OperandKind::long_kw: return word == WordKind::long_keyword;
-                case OperandKind::nnn:
-                case OperandKind::nn:
-                case OperandKind::n:
-                case OperandKind::nx:
-                case OperandKind::nnnn:
-                    return (word != WordKind::v_register) && (word != WordKind::i_register) && (word != WordKind::long_keyword);
-            }
-            return false;
-        };
 
         auto words = std::vector<WordKind>{};
         for (const auto& operand : operands) {
@@ -472,7 +777,7 @@ private:
 
             const auto kinds = form.operands();
             if ((match == nullptr) && (kinds.size() == words.size())
-                && std::ranges::equal(kinds, words, fits)) {
+                && std::ranges::equal(kinds, words, operand_fits)) {
                 match = &form;
             }
         }
@@ -571,78 +876,6 @@ private:
         return ok ? std::optional{EncodedInstruction{.first = word, .second = second}} : std::nullopt;
     }
 
-    [[nodiscard]]
-    auto value_of(uint32_t line, const Token& token, const Field& field) -> std::optional<uint32_t> {
-        switch (classify_word(token.text, WordPosition::operand)) {
-            case WordKind::number: {
-                const auto value = parse_number(token.text);
-                if (!value) {
-                    error(line, token, value.error());
-                    return std::nullopt;
-                }
-
-                if ((*value < field.min()) || (*value > field.max())) {
-                    error(line, token, std::format(
-                        "'{}' does not fit in {}. Use 0 to 0x{:X}, or #{} to #-1.", token.text, field.name, field.max(), field.min()));
-                    return std::nullopt;
-                }
-
-                return static_cast<uint32_t>(*value & field.max());
-            }
-
-            case WordKind::label: {
-                if (!field.allow_label) {
-                    error(line, token, std::format("A label is a 12-bit address, so it does not fit in {}", field.name));
-                    return std::nullopt;
-                }
-
-                const auto it = label_index.find(to_lower_ascii(token.text));
-                if (it == label_index.end()) {
-                    error(line, token, std::format("The label '{}' is not defined", token.text));
-                    return std::nullopt;
-                }
-
-                const auto address = label_locations[it->second];
-                if (static_cast<int64_t>(address) > field.max()) {
-                    error(line, token, std::format("The label '{}' (0x{:X}) does not fit in {}", token.text, address, field.name));
-                    return std::nullopt;
-                }
-                return address;
-            }
-
-            case WordKind::v_register:
-            case WordKind::i_register: {
-                error(line, token, std::format("Expected a number here, not the register '{}'", token.text));
-                return std::nullopt;
-            }
-
-            case WordKind::long_keyword: {
-                error(line, token, "Expected a number here, not the keyword 'long'");
-                return std::nullopt;
-            }
-
-            case WordKind::mnemonic: {
-                error(line, token, std::format("'{}' is an instruction name, not a number or a label", token.text));
-                return std::nullopt;
-            }
-
-            case WordKind::directive: {
-                error(line, token, std::format("'{}' is a directive name, not a number or a label", token.text));
-                return std::nullopt;
-            }
-
-            default: {
-                if (token.text.starts_with('-')) {
-                    error(line, token, std::format("'{}' is not a number or a label. Write a negative number as #{}.", token.text, token.text));
-                }
-                else {
-                    error(line, token, std::format("'{}' is not a number or a label", token.text));
-                }
-                return std::nullopt;
-            }
-        }
-    }
-
     auto write_byte(uint32_t address, uint8_t value) -> void {
         const auto offset = static_cast<size_t>(address - options.origin);
         if (offset < result.image.size()) {
@@ -673,9 +906,14 @@ private:
     // The address after the last instruction at an odd address
     uint32_t odd_run_end = std::numeric_limits<uint32_t>::max();
 
-    // Lowercase name -> index in result.labels and label_locations
-    std::unordered_map<std::string, size_t> label_index;
-    std::vector<uint32_t> label_locations;
+    // Lowercase name -> label or constant
+    std::unordered_map<std::string, Symbol> symbols;
+    std::vector<Constant> constants;
+
+    // The directive (org, ds, or align) whose operand the first pass calculates now. Empty at other times.
+    std::string_view first_pass_user;
+
+    NameLookup lookup = [this](std::string_view name) { return name_value(name); };
 };
 
 } // namespace

@@ -97,13 +97,40 @@ constexpr auto forms = std::array{
     form("lflags", {vx},           0xF085, 0xF0FF, Op::lflags,     on_super,  "FX85", "Load v0 to vX from the flag registers"),
 };
 
-constexpr auto directives = std::array<std::string_view, 4>{"db", "dw", "org", "platform"};
+constexpr auto directives = std::array{
+    DirectiveInfo{"db", "db value, ...",
+        "Write bytes. A value can be an expression."},
+    DirectiveInfo{"dw", "dw value, ...",
+        "Write 16-bit words, high byte first. A label gives its address."},
+    DirectiveInfo{"ds", "ds count [fill]",
+        "Write count bytes of the fill value (0 if there is no fill). The count can use only the labels and constants before the line."},
+    DirectiveInfo{"org", "org address",
+        "Move forward to an address. Zeros fill the gap. The address can use only the labels and constants before the line."},
+    DirectiveInfo{"align", "align size",
+        "Move forward to a multiple of the size, a power of two. Zeros fill the gap."},
+    DirectiveInfo{"equ", "name equ value",
+        "Define a constant. The value can use labels and other constants, also the ones after the line."},
+    DirectiveInfo{"platform", "platform name",
+        "The platform: chip8, hires, schip, or xochip. It sets the instructions and the memory size. "
+        "It must come before the first instruction, data, or org line. Without it, the platform of the machine applies."},
+};
 
 } // namespace
 
 
 auto instruction_forms() noexcept -> std::span<const InstructionForm> {
     return forms;
+}
+
+
+auto directive_infos() noexcept -> std::span<const DirectiveInfo> {
+    return directives;
+}
+
+
+auto find_directive(std::string_view lowercase_word) noexcept -> const DirectiveInfo* {
+    const auto it = std::ranges::find(directives, lowercase_word, &DirectiveInfo::name);
+    return (it != directives.end()) ? &*it : nullptr;
 }
 
 
@@ -126,7 +153,24 @@ auto is_mnemonic(std::string_view lowercase_word) noexcept -> bool {
 
 
 auto is_directive(std::string_view lowercase_word) noexcept -> bool {
-    return std::ranges::find(directives, lowercase_word) != directives.end();
+    return find_directive(lowercase_word) != nullptr;
+}
+
+
+auto operand_fits(OperandKind kind, WordKind word) noexcept -> bool {
+    switch (kind) {
+        case vx:
+        case vy:
+        case v0:      return word == WordKind::v_register;
+        case i:       return word == WordKind::i_register;
+        case long_kw: return word == WordKind::long_keyword;
+        case nnn:
+        case nn:
+        case n:
+        case nx:
+        case nnnn:    return (word != WordKind::v_register) && (word != WordKind::i_register) && (word != WordKind::long_keyword);
+    }
+    return false;
 }
 
 

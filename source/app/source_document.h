@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <imgui-color-text-edit/TextEditor.h>
 
@@ -105,6 +106,22 @@ public:
         return tracker;
     }
 
+    /// The labels of the program that last loaded from the text, in order of address. No constants.
+    [[nodiscard]]
+    auto program_labels() const noexcept -> const std::vector<Label>& {
+        return loaded_labels;
+    }
+
+    /// A count that changes when the program labels change
+    [[nodiscard]]
+    auto program_labels_version() const noexcept -> uint64_t {
+        return labels_version;
+    }
+
+    /// The label or the constant of a name in the last check. nullptr if the text does not define the name.
+    [[nodiscard]]
+    auto find_definition(std::string_view name) const -> const Label*;
+
     /**
      * @brief The bytes in the loaded program that a line wrote
      *
@@ -119,15 +136,24 @@ public:
     /// Scroll the editor to the line that wrote an address, if the line is out of view
     auto reveal(uint16_t address) -> void;
 
-    /// Show the problems and the line of the PC as line markers. Call each frame, before the editor draws.
-    auto update_markers(std::optional<uint16_t> pc) -> void;
+    /**
+     * @brief Prepare the editor for a frame. Call each frame, before the editor draws.
+     *
+     * @details Show the problems and the line of the PC as line markers. After
+     *          a change of the constants, give the editor the other language
+     *          object, so it colors all lines again (see set_constant_names).
+     */
+    auto update_view(std::optional<uint16_t> pc) -> void;
 
 private:
     // The editor calls this after each edit, undo, and redo
     auto text_changed() -> void;
 
-    // Show the diagnostics of the last check as squiggles
+    // Show the diagnostics of the last check as squiggles. The hover of the code editor shows their messages.
     auto show_squiggles() -> void;
+
+    // Give the constants of the last check to the highlighter
+    auto update_constant_colors() -> void;
 
     TextEditor text_editor;
     std::filesystem::path file;
@@ -137,6 +163,8 @@ private:
     bool dirty = false;
 
     LineTracker tracker;
+    std::vector<Label> loaded_labels;
+    uint64_t labels_version = 0;
 
     AssembleResult checked;
     uint64_t check_count = 0;
@@ -146,6 +174,10 @@ private:
     std::optional<uint32_t> marked_pc_line;
     uint64_t marked_check = 0;
     bool markers_valid = false;
+
+    // The constants changed since the last frame. The editor has the second language object.
+    bool recolor_pending = false;
+    bool alternate_language = false;
 };
 
 } // namespace c8

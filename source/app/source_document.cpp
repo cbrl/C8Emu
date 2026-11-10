@@ -1,9 +1,12 @@
 #include "source_document.h"
 
+#include "assembler/lexer.h"
 #include "frontend/rom_files.h"
 #include "ui/chip8_language.h"
 
+#include <algorithm>
 #include <format>
+#include <iterator>
 #include <map>
 #include <utility>
 #include <vector>
@@ -51,6 +54,8 @@ auto SourceDocument::replace(std::string_view new_text, std::filesystem::path so
     dirty = false;
 
     tracker.clear();
+    loaded_labels.clear();
+    ++labels_version;
     markers_valid = false;
 
     (void)check();
@@ -69,6 +74,7 @@ auto SourceDocument::check() -> const AssembleResult& {
     ++check_count;
 
     show_squiggles();
+    update_constant_colors();
     return checked;
 }
 
@@ -84,6 +90,20 @@ auto SourceDocument::set_default_platform(Variant variant) -> void {
 auto SourceDocument::mark_loaded() -> void {
     tracker.load(text_editor.GetText(), checked.map);
     markers_valid = false;
+
+    loaded_labels.clear();
+    std::ranges::copy_if(checked.labels, std::back_inserter(loaded_labels), [](const Label& label) {
+        return label.kind == LabelKind::label;
+    });
+    std::ranges::stable_sort(loaded_labels, {}, &Label::value);
+    ++labels_version;
+}
+
+
+auto SourceDocument::find_definition(std::string_view name) const -> const Label* {
+    const auto key = to_lower_ascii(name);
+    const auto it = std::ranges::find(checked.labels, key, &Label::name);
+    return (it != checked.labels.end()) ? &*it : nullptr;
 }
 
 
@@ -121,7 +141,14 @@ auto SourceDocument::reveal(uint16_t address) -> void {
 }
 
 
-auto SourceDocument::update_markers(std::optional<uint16_t> pc) -> void {
+auto SourceDocument::update_view(std::optional<uint16_t> pc) -> void {
+    // Two switches before the editor draws give back the object that it has, so switch at most once in a frame
+    if (recolor_pending) {
+        recolor_pending = false;
+        alternate_language = !alternate_language;
+        text_editor.SetLanguage(chip8_language(alternate_language));
+    }
+
     const auto pc_line = pc ? tracker.line_of(*pc) : std::nullopt;
 
     if (markers_valid && (check_count == marked_check) && (pc_line == marked_pc_line)) {
@@ -170,7 +197,22 @@ auto SourceDocument::show_squiggles() -> void {
         const auto end = TextEditor::DocPos{diagnostic.line, diagnostic.column + diagnostic.length};
         const auto color = (diagnostic.severity == Severity::error) ? error_color : warning_color;
 
-        text_editor.AddSquiggle(start, end, diagnostic_squiggles, color, diagnostic.message);
+        text_editor.AddSquiggle(start, end, diagnostic_squiggles, color);
+    }
+}
+
+
+auto SourceDocument::update_constant_colors() -> void {
+    auto names = std::vector<std::string>{};
+    for (const auto& label : checked.labels) {
+        if (label.kind == LabelKind::constant) {
+            names.push_back(label.name);
+        }
+    }
+
+    // The highlighter uses the new names at once. update_view() makes the editor color the old lines again.
+    if (set_constant_names(std::move(names))) {
+        recolor_pending = true;
     }
 }
 

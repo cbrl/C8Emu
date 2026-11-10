@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <span>
 #include <string>
 #include <vector>
@@ -40,14 +41,20 @@ struct DisassemblyResult {
 };
 
 
+/// The name of each address that has one
+using AddressNames = std::map<uint32_t, std::string>;
+
+
 /**
  * @brief The assembly text of one instruction on a platform
  *
- * @details An undefined word is `dw 0x5123`. Addresses are numbers, not
- *          labels. F000 NNNN (XO-CHIP) reads its address from the next word.
+ * @details An undefined word is `dw 0x5123`. F000 NNNN (XO-CHIP) reads its
+ *          address from the next word.
+ *
+ * @param[in] names  If not nullptr, a name replaces each address that has one
  */
 [[nodiscard]]
-auto format_instruction(uint16_t word, uint16_t next_word, Variant variant) -> std::string;
+auto format_instruction(uint16_t word, uint16_t next_word, Variant variant, const AddressNames* names = nullptr) -> std::string;
 
 
 /**

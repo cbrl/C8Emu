@@ -6,6 +6,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace c8 {
 
@@ -16,21 +17,20 @@ struct Entry {
     std::string_view meaning;
 };
 
-constexpr auto directives = std::array{
-    Entry{"db n, ...", "Write bytes"},
-    Entry{"dw nnnn, ...", "Write 16-bit words, high byte first. A label gives its address."},
-    Entry{"org address", "Move forward to an address. Zeros fill the gap."},
-    Entry{"platform name", "The platform: chip8, hires, schip, or xochip. It sets the instructions and the memory size. "
-                           "It must come before the first instruction, data, or org line. Without it, the platform of the machine applies."},
-    Entry{"nnnn", "A line with only a number writes it as a word"},
-};
+// A line with only a number. It is not a directive, but it is a way to write data.
+constexpr auto data_word = Entry{"nnnn", "A line with only a number writes it as a word"};
 
 constexpr auto syntax_rules = std::array{
     Entry{"label: ...", "Define a label at the address of the line. A label can stand alone on its line."},
     Entry{"; text", "A comment, to the end of the line"},
-    Entry{"2A  0x2A", "Hexadecimal numbers"},
+    Entry{"2A  0x2A", "Hexadecimal numbers. A number without a prefix is hexadecimal."},
     Entry{"#42  #-1", "Decimal numbers. A negative number is stored as two's complement."},
     Entry{"%0010_1010", "Binary numbers. A '_' can separate the digits after a prefix."},
+    Entry{"%..##..##", "A binary number for a sprite row: a '.' is 0 and a '#' is 1"},
+    Entry{"x+1  (x + 1)", "An expression. It has no spaces, or it is in parentheses, because a space separates two operands."},
+    Entry{"* / %  + -", "Multiply, divide, remainder, add, and subtract, with the precedence of C"},
+    Entry{"<< >>  & ^ |  ~", "Shifts, bitwise AND, XOR, OR, and NOT"},
+    Entry{"-x  #-10  -0x10", "Negative values. '-10' is an error, because it would be -0x10."},
     Entry{"v0 to vF, i", "The registers"},
     Entry{"long", "The keyword of the 4-byte XO-CHIP instruction 'mov i, long nnnn'"},
     Entry{"a, b  a b", "Commas and spaces both separate the operands"},
@@ -64,6 +64,16 @@ auto platform_text(const InstructionForm& form) -> std::string {
         return "SUPER-CHIP, XO-CHIP";
     }
     return platform_list(form.variants);
+}
+
+// The directives, and the line with only a number
+auto directive_entries() -> std::vector<Entry> {
+    auto entries = std::vector<Entry>{};
+    for (const auto& directive : directive_infos()) {
+        entries.push_back(Entry{directive.syntax, directive.summary});
+    }
+    entries.push_back(data_word);
+    return entries;
 }
 
 // Renders a table of the assembly syntax and descriptions
@@ -143,9 +153,10 @@ auto SyntaxReferencePanel::draw(UiContext& /*context*/) -> void {
     }
 
     ImGui::SeparatorText("Directives");
+    static const auto directives = directive_entries();
     entry_table("##directives", directives, filter);
 
-    ImGui::SeparatorText("Labels, numbers, and comments");
+    ImGui::SeparatorText("Labels, numbers, expressions, and comments");
     entry_table("##rules", syntax_rules, filter);
 
     ImGui::End();

@@ -5,12 +5,15 @@
 #include "debugger/debugger.h"
 #include "frontend/rom_files.h"
 #include "ui/command_ui.h"
+#include "ui/editor_assist.h"
 #include "util/log.h"
 
 #include <algorithm>
 #include <format>
 #include <optional>
 #include <string>
+
+#include <imgui_internal.h> // ImGuiKey_Keyboard_BEGIN
 
 namespace c8 {
 
@@ -166,9 +169,13 @@ auto draw_line_menu(UiContext& context, size_t line) -> void {
 auto EditorPanel::draw(UiContext& context) -> void {
     auto& document = context.document;
 
+    if (!configured) {
+        configure(context);
+    }
+
     // Before the editor draws, so the markers show in this frame
     const auto pc = paused_pc(context);
-    document.update_markers(pc);
+    document.update_view(pc);
 
     const float font_size = ImGui::GetFontSize();
     ImGui::SetNextWindowSize({font_size * 30.0f, font_size * 30.0f}, ImGuiCond_FirstUseEver);
@@ -191,6 +198,10 @@ auto EditorPanel::draw(UiContext& context) -> void {
     editor.SetLineNumberContextMenuCallback([&context](TextEditor::PopupData& popup) {
         draw_line_menu(context, popup.pos.line);
     });
+    editor.SetTextContextMenuCallback([&context](TextEditor::PopupData& popup) {
+        draw_text_menu(context, popup);
+    });
+    update_help(context);
 
     // The editor takes the space above the Problems table and the status line
     const auto& style = ImGui::GetStyle();
@@ -200,10 +211,42 @@ auto EditorPanel::draw(UiContext& context) -> void {
 
     editor.Render("##source", {0.0f, -bottom_height});
 
+    // The editor is a child window. The help checks this in the next frame.
+    editor_hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+
+    // The default route is the focused window and its parents, so F12 works while the focus is in this panel
+    if (ImGui::Shortcut(ImGuiKey_F12)) {
+        go_to_cursor_definition(context);
+    }
+
     draw_problems(context, table_height);
     draw_status_line(context);
 
     ImGui::End();
+}
+
+
+auto EditorPanel::configure(UiContext& context) -> void {
+    configured = true;
+
+    // The document lives as long as the app, so the completion can keep a reference to it
+    auto& document = context.document;
+
+    completion.callback = [&document](TextEditor::AutoCompleteState& state) {
+        state.suggestions.clear();
+        if (state.inComment) {
+            return;
+        }
+
+        const auto line = document.editor().GetLineText(state.searchTermEnd.line);
+        state.suggestions = source_completions(
+            line,
+            static_cast<uint32_t>(state.searchTermStart.index),
+            static_cast<uint32_t>(state.searchTermEnd.index),
+            document.last_check());
+    };
+
+    document.editor().SetAutoCompleteConfig(&completion);
 }
 
 
@@ -223,6 +266,8 @@ auto EditorPanel::draw_menu_bar(UiContext& context) -> void {
         command_menu_item(context, "Export ROM...", Command::export_rom);
         ImGui::EndMenu();
     }
+
+    draw_edit_menu(context);
 
     if (ImGui::BeginMenu("Build")) {
         command_menu_item(context, "Assemble & Load", Command::assemble_and_load);
@@ -250,7 +295,79 @@ auto EditorPanel::draw_menu_bar(UiContext& context) -> void {
         ImGui::EndMenu();
     }
 
+    draw_view_menu(context);
+
     ImGui::EndMenuBar();
+}
+
+
+auto EditorPanel::draw_edit_menu(UiContext& context) -> void {
+    if (!ImGui::BeginMenu("Edit")) {
+        return;
+    }
+
+    auto& editor = context.document.editor();
+
+    if (ImGui::MenuItem("Undo", "Ctrl+Z", false, editor.CanUndo())) {
+        editor.Undo();
+    }
+    if (ImGui::MenuItem("Redo", "Ctrl+Y", false, editor.CanRedo())) {
+        editor.Redo();
+    }
+
+    // Without a selection, Cut and Copy take the whole line
+    ImGui::Separator();
+    if (ImGui::MenuItem("Cut", "Ctrl+X")) {
+        editor.Cut();
+    }
+    if (ImGui::MenuItem("Copy", "Ctrl+C")) {
+        editor.Copy();
+    }
+    if (ImGui::MenuItem("Paste", "Ctrl+V")) {
+        editor.Paste();
+    }
+
+    ImGui::Separator();
+    if (ImGui::MenuItem("Find and Replace", "Ctrl+F")) {
+        editor.OpenFindReplaceWindow();
+    }
+    if (ImGui::MenuItem("Toggle Comment", "Ctrl+/")) {
+        editor.ToggleComments();
+    }
+
+    ImGui::Separator();
+    if (ImGui::MenuItem("Go to Definition", "F12")) {
+        go_to_cursor_definition(context);
+    }
+    ImGui::SetItemTooltip("Go to the line that defines the label or the constant at the cursor");
+
+    ImGui::EndMenu();
+}
+
+
+auto EditorPanel::draw_view_menu(UiContext& context) -> void {
+    if (!ImGui::BeginMenu("View")) {
+        return;
+    }
+
+    auto& editor = context.document.editor();
+
+    bool line_numbers = editor.IsShowLineNumbersEnabled();
+    if (ImGui::MenuItem("Line Numbers", nullptr, &line_numbers)) {
+        editor.SetShowLineNumbersEnabled(line_numbers);
+    }
+
+    bool whitespace = editor.IsShowWhitespacesEnabled();
+    if (ImGui::MenuItem("Show Whitespace", nullptr, &whitespace)) {
+        editor.SetShowWhitespacesEnabled(whitespace);
+    }
+
+    bool mini_map = editor.IsShowMiniMapEnabled();
+    if (ImGui::MenuItem("Mini Map", nullptr, &mini_map)) {
+        editor.SetShowMiniMapEnabled(mini_map);
+    }
+
+    ImGui::EndMenu();
 }
 
 
@@ -375,16 +492,149 @@ auto EditorPanel::draw_status_line(UiContext& context) -> void {
 }
 
 
-auto EditorPanel::go_to(UiContext& context, const Diagnostic& diagnostic) -> void {
+auto EditorPanel::update_help(UiContext& context) -> void {
+    const auto& io = ImGui::GetIO();
+
+    bool typed = !io.InputQueueCharacters.empty();
+    for (int key = ImGuiKey_Keyboard_BEGIN; !typed && (key < ImGuiKey_Keyboard_END); ++key) {
+        typed = ImGui::IsKeyPressed(static_cast<ImGuiKey>(key), false);
+    }
+    const bool moved = (io.MouseDelta.x != 0.0f) || (io.MouseDelta.y != 0.0f);
+
+    // The help and the completion list are popups at the same level. When one opens, the other closes. So the
+    // help stays off while the user types, and it does not come back while another popup is open.
+    if (typed) {
+        help_enabled = false;
+    }
+    else if (moved && !help_enabled && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
+        help_enabled = true;
+    }
+
+    // The word under the mouse. The positions of the editor are from its last frame.
     auto& editor = context.document.editor();
-    const auto position = TextEditor::DocPos{diagnostic.line, diagnostic.column};
+    const auto mouse = ImGui::GetMousePos();
+
+    auto word_key = std::optional<std::pair<size_t, uint32_t>>{};
+    if (help_enabled && editor_hovered && editor.IsMousePosOverGlyph(mouse)) {
+        const auto position = editor.GetDocPosAtMousePos(mouse);
+        const auto text = editor.GetLineText(position.line);
+        if (const auto word = source_word_at(text, static_cast<uint32_t>(position.index))) {
+            word_key = std::pair{position.line, word->column};
+        }
+    }
+
+    if (word_key != help_word) {
+        help_word = word_key;
+        help_start = ImGui::GetTime();
+    }
+
+    // The editor opens its help window only while it has the callback. Without the callback, it closes the window.
+    // So the window opens only after the mouse stays on one word, and it shows its contents at once.
+    const bool waited = (ImGui::GetTime() - help_start) >= static_cast<double>(ImGui::GetStyle().HoverDelayNormal);
+    if (help_word && waited) {
+        editor.SetTextHoverCallback([this, &context](TextEditor::PopupData& /*popup*/) { draw_help(context); });
+    }
+    else {
+        editor.ClearTextHoverCallback();
+    }
+}
+
+
+auto EditorPanel::draw_help(UiContext& context) -> void {
+    auto& editor = context.document.editor();
+    const auto mouse = ImGui::GetMousePos();
+
+    if (!editor_hovered || !editor.IsMousePosOverGlyph(mouse)) {
+        ImGui::CloseCurrentPopup();
+        return;
+    }
+
+    // The word points into the text of the line, so the text must live until the help is drawn
+    const auto position = editor.GetDocPosAtMousePos(mouse);
+    const auto line = static_cast<uint32_t>(position.line);
+    const auto text = editor.GetLineText(position.line);
+    const auto word = source_word_at(text, static_cast<uint32_t>(position.index));
+
+    if (!word || !draw_source_help(context, line, *word)) {
+        ImGui::CloseCurrentPopup();
+    }
+}
+
+
+auto EditorPanel::draw_text_menu(UiContext& context, const TextEditor::PopupData& popup) -> void {
+    auto& document = context.document;
+    auto& editor = document.editor();
+
+    const auto text = editor.GetLineText(popup.pos.line);
+    if (const auto* label = definition_at(document, text, static_cast<uint32_t>(popup.pos.index))) {
+        const auto item = std::format("Go to Definition of {}", label->name);
+        if (ImGui::MenuItem(item.c_str())) {
+            go_to(context, *label);
+        }
+        ImGui::Separator();
+    }
+
+    if (ImGui::MenuItem("Cut", "Ctrl+X")) {
+        editor.Cut();
+    }
+    if (ImGui::MenuItem("Copy", "Ctrl+C")) {
+        editor.Copy();
+    }
+    if (ImGui::MenuItem("Paste", "Ctrl+V")) {
+        editor.Paste();
+    }
+    if (ImGui::MenuItem("Toggle Comment", "Ctrl+/")) {
+        editor.ToggleComments();
+    }
+
+    ImGui::Separator();
+    draw_line_menu(context, popup.pos.line);
+}
+
+
+auto EditorPanel::go_to_cursor_definition(UiContext& context) -> void {
+    auto& document = context.document;
+    auto& editor = document.editor();
+
+    const auto cursor = editor.GetMainCursorPosition();
+    const auto text = editor.GetLineText(cursor.line);
+    const auto column = static_cast<uint32_t>(cursor.index);
+
+    // The cursor can be just after the name
+    const auto* label = definition_at(document, text, column);
+    if ((label == nullptr) && (column > 0)) {
+        label = definition_at(document, text, column - 1);
+    }
+
+    if (label == nullptr) {
+        log_info("Go to Definition: line {} has no label or constant at the cursor", cursor.line + 1);
+        return;
+    }
+    go_to(context, *label);
+}
+
+
+auto EditorPanel::go_to(UiContext& context, uint32_t line, uint32_t column) -> void {
+    auto& editor = context.document.editor();
+    const auto position = TextEditor::DocPos{line, column};
 
     // SetCursor scrolls only as far as needed. Center a line that is out of view.
     editor.SetCursor(position);
     if (!editor.IsDocPosVisible(position)) {
-        editor.ScrollToLine(diagnostic.line, TextEditor::Scroll::alignMiddle);
+        editor.ScrollToLine(line, TextEditor::Scroll::alignMiddle);
     }
     editor.SetFocus();
+}
+
+
+auto EditorPanel::go_to(UiContext& context, const Diagnostic& diagnostic) -> void {
+    go_to(context, diagnostic.line, diagnostic.column);
+}
+
+
+auto EditorPanel::go_to(UiContext& context, const Label& label) -> void {
+    const auto text = context.document.editor().GetLineText(label.line);
+    go_to(context, label.line, definition_column(text, label));
 }
 
 } // namespace c8

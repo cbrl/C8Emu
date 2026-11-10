@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <format>
-#include <map>
 #include <optional>
 #include <string_view>
 
@@ -21,10 +20,6 @@ constexpr size_t mnemonic_width = 5;
 
 // Instruction and data lines have an indent, so the labels stand out
 constexpr std::string_view indent = "    ";
-
-// The label of each address that has one
-using LabelNames = std::map<uint32_t, std::string>;
-
 
 auto label_name(TargetKind kind, uint32_t address) -> std::string {
     auto prefix = std::string_view{};
@@ -53,7 +48,7 @@ auto statement(std::string_view mnemonic) -> std::string {
 
 // The text of an instruction. F000 NNNN reads its address from next_word.
 // If labels is not null, a label replaces each address that has one.
-auto format_word(uint16_t word, uint16_t next_word, Variant variant, const LabelNames* labels) -> std::string {
+auto format_word(uint16_t word, uint16_t next_word, Variant variant, const AddressNames* labels) -> std::string {
     const auto* form = form_for_word(word, variant);
     if (form == nullptr) {
         return statement("dw") + std::format("0x{:04X}", word);
@@ -124,9 +119,10 @@ auto format_bytes(std::span<const uint8_t> bytes) -> std::string {
 
 auto add_label(DisassemblyResult& result, const std::string& name, uint32_t address) -> void {
     result.labels.push_back(Label{
-        .name    = name,
-        .address = static_cast<uint16_t>(address),
-        .line    = static_cast<uint32_t>(result.lines.size()),
+        .name  = name,
+        .kind  = LabelKind::label,
+        .value = address,
+        .line  = static_cast<uint32_t>(result.lines.size()),
     });
     result.lines.push_back(name + ':');
 }
@@ -144,8 +140,8 @@ auto add_line(DisassemblyResult& result, std::string_view text, uint32_t address
 
 
 // The label of each target. A target inside an instruction gets no label, because no line starts there.
-auto label_names(const FlowAnalysis& flow) -> LabelNames {
-    auto names = LabelNames{};
+auto label_names(const FlowAnalysis& flow) -> AddressNames {
+    auto names = AddressNames{};
     for (const auto& [address, kind] : flow.targets()) {
         const auto offset = flow.offset_of(address, 1);
         if (offset && (flow.role(*offset) != ByteRole::operand)) {
@@ -244,8 +240,8 @@ auto DisassemblyResult::text() const -> std::string {
 }
 
 
-auto format_instruction(uint16_t word, uint16_t next_word, Variant variant) -> std::string {
-    return format_word(word, next_word, variant, nullptr);
+auto format_instruction(uint16_t word, uint16_t next_word, Variant variant, const AddressNames* names) -> std::string {
+    return format_word(word, next_word, variant, names);
 }
 
 

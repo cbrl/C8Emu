@@ -25,21 +25,20 @@ constexpr uint32_t same_name_score = 3;
 
 
 // The instruction name or directive of a line, in lowercase. Empty if the line
-// writes no bytes: a blank line, a comment, a label alone, org, or platform.
+// writes no bytes: a blank line, a comment, a label alone, org, align,
+// platform, or a constant (name equ value).
 auto statement_key(std::string_view line) -> std::string {
     const auto tokens = tokenize_line(line);
 
     // The assembler reads a first word that ends with ':' as a label
-    size_t index = 0;
-    if (!tokens.empty() && tokens[0].text.ends_with(':')) {
-        index = 1;
-    }
-    if (index >= tokens.size()) {
+    const size_t index = statement_start(tokens);
+    if ((index >= tokens.size()) || defines_constant(tokens, index)) {
         return {};
     }
 
     auto key = to_lower_ascii(tokens[index].text);
-    return ((key == "org") || (key == "platform")) ? std::string{} : key;
+    const bool no_bytes = (key == "org") || (key == "align") || (key == "platform") || (key == "equ");
+    return no_bytes ? std::string{} : key;
 }
 
 
@@ -151,6 +150,13 @@ auto LineTracker::load(std::string_view text, SourceMap program_map) -> void {
     for (size_t index = 0; index < spans.size(); ++index) {
         if (spans[index].line < count) {
             loaded_span_of_line[spans[index].line] = static_cast<uint32_t>(index);
+        }
+    }
+
+    // A loaded line that wrote no bytes, for example `ds 0`, is not a statement. A breakpoint goes past it.
+    for (size_t line = 0; line < count; ++line) {
+        if (loaded_span_of_line[line] == none) {
+            loaded_keys[line].clear();
         }
     }
 

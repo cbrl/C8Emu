@@ -10,15 +10,6 @@ namespace c8 {
 
 namespace {
 
-constexpr auto is_separator(char c) noexcept -> bool {
-    return (c == ' ') || (c == '\t') || (c == ',') || (c == '\r') || (c == '\v') || (c == '\f');
-}
-
-// A UTF-8 byte that starts a code point (not a continuation byte)
-constexpr auto starts_code_point(char c) noexcept -> bool {
-    return (static_cast<unsigned char>(c) & 0xC0u) != 0x80u;
-}
-
 constexpr auto lower(char c) noexcept -> char {
     return ((c >= 'A') && (c <= 'Z')) ? static_cast<char>(c - 'A' + 'a') : c;
 }
@@ -34,10 +25,6 @@ constexpr auto digit_value(char c) noexcept -> int {
     return -1;
 }
 
-constexpr auto is_hex_digit(char c) noexcept -> bool {
-    return digit_value(c) >= 0;
-}
-
 auto all_hex_digits(std::string_view text) noexcept -> bool {
     return !text.empty() && std::ranges::all_of(text, is_hex_digit);
 }
@@ -47,16 +34,19 @@ constexpr auto is_label_start(char c) noexcept -> bool {
     return ((c >= 'a') && (c <= 'z')) || (c == '_') || (c == '.');
 }
 
-constexpr auto is_label_char(char c) noexcept -> bool {
-    return is_label_start(c) || ((c >= '0') && (c <= '9'));
-}
-
 // The form of a label name, without the reserved words
 auto has_label_syntax(std::string_view name) noexcept -> bool {
     return !name.empty() && is_label_start(name.front()) && std::ranges::all_of(name, is_label_char);
 }
 
-// A number with a prefix: 0x, #, or %
+} // namespace
+
+
+auto is_label_char(char c) noexcept -> bool {
+    return is_label_start(c) || ((c >= '0') && (c <= '9'));
+}
+
+
 auto has_number_prefix(std::string_view word) noexcept -> bool {
     if ((word.size() >= 2) && (word[0] == '0') && (lower(word[1]) == 'x')) {
         return true;
@@ -64,7 +54,34 @@ auto has_number_prefix(std::string_view word) noexcept -> bool {
     return !word.empty() && ((word[0] == '#') || (word[0] == '%'));
 }
 
-} // namespace
+
+auto statement_start(std::span<const Token> tokens) noexcept -> size_t {
+    return (!tokens.empty() && tokens[0].text.ends_with(':')) ? 1 : 0;
+}
+
+
+auto defines_constant(std::span<const Token> tokens, size_t head) -> bool {
+    return ((head + 1) < tokens.size()) && (to_lower_ascii(tokens[head + 1].text) == "equ");
+}
+
+
+auto reserved_word(std::string_view word) -> std::optional<ReservedWord> {
+    const auto lowercase = to_lower_ascii(word);
+
+    if ((lowercase == "i") || parse_v_register(word)) {
+        return ReservedWord::register_name;
+    }
+    if (lowercase == "long") {
+        return ReservedWord::keyword;
+    }
+    if (is_mnemonic(lowercase)) {
+        return ReservedWord::mnemonic;
+    }
+    if (is_directive(lowercase)) {
+        return ReservedWord::directive;
+    }
+    return std::nullopt;
+}
 
 
 auto tokenize_line(std::string_view line) -> std::vector<Token> {
@@ -88,15 +105,31 @@ auto tokenize_line(std::string_view line) -> std::vector<Token> {
             continue;
         }
 
-        // A word runs to the next separator or comment
+        // A word runs to the next separator or comment. Inside parentheses, a separator is part of the word.
         const size_t start = pos;
         const uint32_t start_column = column;
+        int depth = 0;
 
-        while ((pos < line.size()) && !is_separator(line[pos]) && (line[pos] != ';')) {
+        while ((pos < line.size()) && (line[pos] != ';') && ((depth > 0) || !is_separator(line[pos]))) {
+            if (line[pos] == '(') {
+                ++depth;
+            }
+            else if ((line[pos] == ')') && (depth > 0)) {
+                --depth;
+            }
+
             if (starts_code_point(line[pos])) {
                 ++column;
             }
             ++pos;
+        }
+
+        // A '(' without a ')' takes the rest of the line. The separators at the end are not part of the word.
+        if (depth > 0) {
+            while ((pos > start) && is_separator(line[pos - 1])) {
+                --pos;
+                --column;
+            }
         }
 
         tokens.push_back(Token{
@@ -247,7 +280,17 @@ auto parse_number(std::string_view word) -> std::expected<int64_t, std::string> 
             continue;
         }
 
-        const int digit = digit_value(c);
+        // A sprite row: a '.' is 0 and a '#' is 1
+        int digit = digit_value(c);
+        if (base == 2) {
+            if (c == '.') {
+                digit = 0;
+            }
+            else if (c == '#') {
+                digit = 1;
+            }
+        }
+
         if ((digit < 0) || (digit >= base)) {
             const auto* kind = (base == 16) ? "hexadecimal" : ((base == 10) ? "decimal" : "binary");
             return std::unexpected(std::format("'{}' is not a {} number", word, kind));
@@ -269,29 +312,23 @@ auto parse_number(std::string_view word) -> std::expected<int64_t, std::string> 
 }
 
 
-auto label_name_error(std::string_view name) -> std::optional<std::string> {
+auto label_name_error(std::string_view name, std::string_view kind) -> std::optional<std::string> {
     if (!has_label_syntax(name)) {
         return std::format(
-            "'{}' is not a valid label name. A label starts with a letter, '_', or '.', and holds only letters, digits, '_', and '.'.",
-            name);
+            "'{}' is not a valid {} name. A name starts with a letter, '_', or '.', and holds only letters, digits, '_', and '.'.",
+            name, kind);
     }
 
-    const auto lowercase = to_lower_ascii(name);
-
-    if ((lowercase == "i") || parse_v_register(name)) {
-        return std::format("'{}' is a register name, so it cannot be a label", name);
-    }
-    if (lowercase == "long") {
-        return std::format("'{}' is a keyword (mov i, long nnnn), so it cannot be a label", name);
-    }
-    if (is_mnemonic(lowercase)) {
-        return std::format("'{}' is an instruction name, so it cannot be a label", name);
-    }
-    if (is_directive(lowercase)) {
-        return std::format("'{}' is a directive name, so it cannot be a label", name);
+    if (const auto reserved = reserved_word(name)) {
+        switch (*reserved) {
+            case ReservedWord::register_name: return std::format("'{}' is a register name, so it cannot be a {}", name, kind);
+            case ReservedWord::keyword:       return std::format("'{}' is a keyword (mov i, long nnnn), so it cannot be a {}", name, kind);
+            case ReservedWord::mnemonic:      return std::format("'{}' is an instruction name, so it cannot be a {}", name, kind);
+            case ReservedWord::directive:     return std::format("'{}' is a directive name, so it cannot be a {}", name, kind);
+        }
     }
     if (all_hex_digits(name)) {
-        return std::format("'{}' reads as the hex number 0x{}, so it cannot be a label", name, name);
+        return std::format("'{}' reads as the hex number 0x{}, so it cannot be a {}", name, name, kind);
     }
 
     return std::nullopt;

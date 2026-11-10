@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 
+#include "assembler/lexer.h"
 #include "chip8/isa/decode.h"
 #include "chip8/variant.h"
 
@@ -82,9 +83,25 @@ struct InstructionForm {
 };
 
 
+/// A directive of the assembler
+struct DirectiveInfo {
+    std::string_view name;    ///< Lowercase, for example "ds"
+    std::string_view syntax;  ///< For example "ds count [fill]"
+    std::string_view summary; ///< What the directive does
+};
+
+
 /// All instruction forms, in opcode order
 [[nodiscard]]
 auto instruction_forms() noexcept -> std::span<const InstructionForm>;
+
+/// All directives
+[[nodiscard]]
+auto directive_infos() noexcept -> std::span<const DirectiveInfo>;
+
+/// The directive with a lowercase name. nullptr if the word is not a directive.
+[[nodiscard]]
+auto find_directive(std::string_view lowercase_word) noexcept -> const DirectiveInfo*;
 
 /**
  * @brief The form of an instruction word on a platform
@@ -103,9 +120,18 @@ auto form_for_word(uint16_t word, Variant variant) noexcept -> const Instruction
 [[nodiscard]]
 auto is_mnemonic(std::string_view lowercase_word) noexcept -> bool;
 
-/// True if a lowercase word is a directive (db, dw, org, platform)
+/// True if a lowercase word is a directive (db, dw, ds, org, align, equ, platform)
 [[nodiscard]]
 auto is_directive(std::string_view lowercase_word) noexcept -> bool;
+
+/**
+ * @brief True if a word of a kind can fill an operand of a form
+ *
+ * @details A register or `long` fills only its own operand kind. Any other
+ *          word is a value: a number, a name, or an expression.
+ */
+[[nodiscard]]
+auto operand_fits(OperandKind kind, WordKind word) noexcept -> bool;
 
 /// The syntax of a form, for example "drw vX, vY, n"
 [[nodiscard]]

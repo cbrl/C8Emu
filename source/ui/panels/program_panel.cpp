@@ -1,9 +1,10 @@
 #include "program_panel.h"
 
-#include "assembler/disassembler.h"
+#include "app/source_document.h"
 #include "chip8/chip8.h"
 #include "debugger/debugger.h"
 
+#include <algorithm>
 #include <string>
 
 namespace c8 {
@@ -12,6 +13,7 @@ namespace {
 
 constexpr ImU32 pc_row_color     = IM_COL32(255, 200, 0, 60);
 constexpr ImU32 breakpoint_color = IM_COL32(230, 60, 60, 255);
+constexpr auto  label_color      = ImVec4{0.35f, 0.70f, 0.61f, 1.0f};
 
 
 // The breakpoint dot of a row. Returns true if the user clicked it.
@@ -38,6 +40,50 @@ auto breakpoint_dot(bool has_breakpoint) -> bool {
 } // namespace
 
 
+auto ProgramPanel::update_rows(const SourceDocument& document, uint32_t parity, size_t memory_size) -> void {
+    const auto version = document.program_labels_version();
+    if ((version == row_labels) && (parity == row_parity) && (memory_size == row_memory) && !rows.empty()) {
+        return;
+    }
+
+    labels = document.program_labels();
+    row_labels = version;
+    row_parity = parity;
+    row_memory = memory_size;
+
+    names.clear();
+    for (const auto& label : labels) {
+        names.try_emplace(static_cast<uint32_t>(label.value), label.name);
+    }
+
+    // A label at an address of the other parity is inside a row, so it gets no row
+    rows.clear();
+    rows.reserve((memory_size / 2) + labels.size());
+
+    size_t next = 0;
+    for (uint32_t address = parity; address < memory_size; address += 2) {
+        while ((next < labels.size()) && (labels[next].value < address)) {
+            ++next;
+        }
+        while ((next < labels.size()) && (labels[next].value == address)) {
+            rows.push_back(Row{.address = static_cast<uint16_t>(address), .label = static_cast<int32_t>(next)});
+            ++next;
+        }
+        rows.push_back(Row{.address = static_cast<uint16_t>(address)});
+    }
+}
+
+
+auto ProgramPanel::instruction_row(uint16_t address) const -> int {
+    // The label rows of an address come before its instruction row
+    auto it = std::ranges::lower_bound(rows, address, {}, &Row::address);
+    while ((it != rows.end()) && (it->address == address) && (it->label >= 0)) {
+        ++it;
+    }
+    return static_cast<int>(it - rows.begin());
+}
+
+
 auto ProgramPanel::draw(UiContext& context) -> void {
     if (!ImGui::Begin(title(), &open)) {
         ImGui::End();
@@ -53,9 +99,10 @@ auto ProgramPanel::draw(UiContext& context) -> void {
 
     // The rows start at address 0 or 1, the same parity as the PC
     const uint16_t pc = state.pc;
-    const uint32_t parity = pc & 1u;
-    const int row_count = static_cast<int>(state.memory.size() / 2);
-    const int pc_row = static_cast<int>(pc / 2);
+    update_rows(context.document, pc & 1u, state.memory.size());
+
+    const int row_count = static_cast<int>(rows.size());
+    const int pc_row = instruction_row(pc);
 
     const bool pc_moved = (pc != shown_pc);
     shown_pc = pc;
@@ -75,18 +122,28 @@ auto ProgramPanel::draw(UiContext& context) -> void {
 
         auto clipper = ImGuiListClipper{};
         clipper.Begin(row_count);
-        if (scroll_to_pc) {
+        if (scroll_to_pc && (pc_row < row_count)) {
             clipper.IncludeItemByIndex(pc_row);
         }
 
         while (clipper.Step()) {
-            for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
-                const auto address = static_cast<uint16_t>((static_cast<uint32_t>(row) * 2) + parity);
+            for (int index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index) {
+                const auto& row = rows[static_cast<size_t>(index)];
+                const uint16_t address = row.address;
+
+                ImGui::PushID(index);
+                ImGui::TableNextRow();
+
+                if (row.label >= 0) {
+                    ImGui::TableSetColumnIndex(3);
+                    const auto text = labels[static_cast<size_t>(row.label)].name + ':';
+                    ImGui::TextColored(label_color, "%s", text.c_str());
+                    ImGui::PopID();
+                    continue;
+                }
+
                 const uint16_t word = state.read_word(address);
                 const bool in_program = (address >= program_begin) && (address < program_end);
-
-                ImGui::PushID(row);
-                ImGui::TableNextRow();
 
                 if (address == pc) {
                     ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1, pc_row_color);
@@ -111,7 +168,7 @@ auto ProgramPanel::draw(UiContext& context) -> void {
                     ImGui::TextDisabled("(the address of F000)");
                 }
                 else {
-                    const auto text = format_instruction(word, state.read_word(address + 2u), variant);
+                    const auto text = format_instruction(word, state.read_word(address + 2u), variant, &names);
                     if (in_program) {
                         ImGui::TextUnformatted(text.c_str());
                     }
@@ -121,7 +178,7 @@ auto ProgramPanel::draw(UiContext& context) -> void {
                 }
 
                 // Scroll only if the PC row is out of view, so the listing does not jump at each step
-                if (scroll_to_pc && (address == pc)) {
+                if (scroll_to_pc && (index == pc_row)) {
                     if (!ImGui::IsItemVisible()) {
                         ImGui::SetScrollHereY(0.25f);
                     }

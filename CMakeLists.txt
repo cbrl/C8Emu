@@ -21,6 +21,7 @@ add_library(
     c8emu_lib OBJECT
     source/assembler/assembler.cpp
     source/assembler/disassembler.cpp
+    source/assembler/expression.cpp
     source/assembler/forms.cpp
     source/assembler/lexer.cpp
     source/assembler/source_map.cpp
@@ -67,6 +68,7 @@ add_executable(
     source/ui/chip8_language.cpp
     source/ui/command_ui.cpp
     source/ui/dock_layout.cpp
+    source/ui/editor_assist.cpp
     source/ui/machine_ui.cpp
     source/ui/main_menu.cpp
     source/ui/status_bar.cpp
