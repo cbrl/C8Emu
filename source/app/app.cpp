@@ -1,6 +1,8 @@
 #include "app.h"
 
+#include "app/settings_store.h"
 #include "assembler/disassembler.h"
+#include "chip8/serialize.h"
 #include "debugger/breakpoint_remap.h"
 #include "frontend/rom_files.h"
 #include "util/log.h"
@@ -11,6 +13,7 @@
 #include <cstdint>
 #include <format>
 #include <string>
+#include <system_error>
 #include <utility>
 
 namespace c8 {
@@ -37,14 +40,54 @@ auto count_of(size_t count, std::string_view noun) -> std::string {
     return std::format("{} {}{}", count, noun, (count == 1) ? "" : "s");
 }
 
-// The largest source file that the editor opens
-constexpr size_t max_source_size = 4 * 1024 * 1024;
+// The time from the last change of a setting to the write of the settings file.
+// A drag of a slider changes a setting in each frame, but the file is written once.
+constexpr auto settings_write_delay = std::chrono::seconds{1};
+
+// The largest save state file. A state holds at most 64 KiB of memory, a program of the same size, and the display.
+constexpr size_t max_state_size = 1024 * 1024;
+
+// The absolute path of a file as UTF-8, for a list of recent files
+auto recent_entry(const std::filesystem::path& file) -> std::string {
+    auto ec = std::error_code{};
+    const auto absolute = std::filesystem::absolute(file, ec);
+    return path_to_utf8(ec ? file : absolute);
+}
+
+// Remove a file that does not exist now from a list of recent files
+auto forget_missing(std::vector<std::string>& list, const std::filesystem::path& file) -> void {
+    auto ec = std::error_code{};
+    if (!std::filesystem::exists(file, ec)) {
+        std::erase(list, recent_entry(file));
+    }
+}
 
 } // namespace
 
 
 App::App() {
-    log_info("C8Emu started");
+    log_info("C8Emu started. User data folder: {}", path_to_utf8(platform.user_data_folder()));
+
+    // Read the settings now, so they are ready before the first frame
+    if (auto loaded = read_settings_file(settings_file())) {
+        settings = std::move(*loaded);
+    }
+    else {
+        log_warning("C8Emu cannot read the settings and uses the defaults. A change of a setting replaces the file. {}", loaded.error());
+    }
+    last_settings = settings;
+
+    // The machine of the last session
+    const auto machine = Preset{
+        .id      = "saved",
+        .name    = "saved",
+        .variant = settings.variant,
+        .quirks  = settings.quirks,
+        .instructions_per_frame = settings.instructions_per_frame,
+    };
+    (void)debugger.apply_preset(machine);
+    debugger.set_break_on_leave_program(settings.break_on_leave_program);
+    sync_settings();
 }
 
 
@@ -76,10 +119,11 @@ auto App::run() -> void {
 
         platform.begin_frame();
 
-        // The shortcuts and the turbo key need the key state of this ImGui frame
+        // The shortcuts, the turbo key, and the rewind key need the key state of this ImGui frame
         auto requests = UiRequests{};
         poll_shortcuts(requests.commands);
         turbo = poll_turbo();
+        rewinding = poll_rewind() && debugger.history_enabled() && debugger.has_program();
 
         auto context = UiContext{
             .chip            = chip,
@@ -88,8 +132,10 @@ auto App::run() -> void {
             .document        = document,
             .settings        = settings,
             .rate            = rate_meter.rate(),
+            .user_data       = platform.user_data_folder(),
             .display_texture = static_cast<ImTextureID>(display_texture.id()),
             .turbo_active    = turbo,
+            .rewinding       = rewinding,
             .unsaved_prompt  = unsaved_prompt,
             .requests        = requests,
         };
@@ -97,23 +143,39 @@ auto App::run() -> void {
         ui.draw(context);
         platform.end_frame();
 
+        // A replay from the history would not give the edited values
+        if (requests.state_edited) {
+            debugger.state_edited();
+        }
+
         for (const auto command : requests.commands) {
+            if ((command == Command::open_rom_file) || (command == Command::open_source_file)) {
+                pending_file = requests.file;
+            }
             execute(command);
         }
+
+        sync_settings();
         platform.limit_frame_rate(settings.frame_limit_enabled, settings.frame_limit);
+    }
+
+    // The changes of the last second are not in the file yet
+    if (settings_unsaved) {
+        save_settings();
     }
 }
 
 
 auto App::apply_input(const PlatformEvents& events) -> void {
+    // The debugger notes each change, so a replay of the history presses the same keys
     if (events.release_all_keys) {
         for (uint8_t key = 0; key < 16; ++key) {
-            chip.set_key(key, false);
+            debugger.set_key(key, false);
         }
     }
 
     for (const auto& event : events.keys) {
-        chip.set_key(event.key, event.down);
+        debugger.set_key(event.key, event.down);
     }
 }
 
@@ -146,9 +208,20 @@ auto App::open_rom_dialog() -> void {
         return dialogs.open_file(platform.window(), FileKind::rom, session.browse_folder());
     });
 
-    if (chosen && session.open_rom(*chosen, settings.auto_detect_platform)) {
-        show_disassembly();
+    if (chosen) {
+        open_rom(*chosen);
     }
+}
+
+
+auto App::open_rom(const std::filesystem::path& file) -> void {
+    if (!session.open_rom(file, settings)) {
+        forget_missing(settings.recent_roms, file);
+        return;
+    }
+
+    Settings::push_recent(settings.recent_roms, recent_entry(file));
+    show_disassembly();
 }
 
 
@@ -182,18 +255,23 @@ auto App::open_source_dialog() -> void {
     const auto chosen = show_dialog([this] {
         return dialogs.open_file(platform.window(), FileKind::source, source_folder());
     });
-    if (!chosen) {
-        return;
+    if (chosen) {
+        open_source(*chosen);
     }
+}
 
-    const auto text = read_text_file(*chosen, max_source_size);
+
+auto App::open_source(const std::filesystem::path& file) -> void {
+    const auto text = read_text_file(file);
     if (!text) {
         log_error("Cannot open the source: {}", text.error());
+        forget_missing(settings.recent_sources, file);
         return;
     }
 
-    document.replace(*text, *chosen);
-    log_info("Opened \"{}\"", path_to_utf8(*chosen));
+    document.replace(*text, file);
+    Settings::push_recent(settings.recent_sources, recent_entry(file));
+    log_info("Opened \"{}\"", path_to_utf8(file));
 }
 
 
@@ -218,6 +296,7 @@ auto App::save_source(bool choose_file) -> bool {
     }
 
     document.mark_saved(file, std::move(text));
+    Settings::push_recent(settings.recent_sources, recent_entry(file));
     log_info("Saved \"{}\"", path_to_utf8(file));
     return true;
 }
@@ -316,6 +395,144 @@ auto App::check_source() -> void {
 }
 
 
+auto App::quick_state_file() const -> std::filesystem::path {
+    return state_slot_file(state_folder(platform.user_data_folder()), session.program_name(), settings.state_slot);
+}
+
+
+auto App::save_state_to(const std::filesystem::path& file) -> void {
+    auto ec = std::error_code{};
+    std::filesystem::create_directories(file.parent_path(), ec);
+
+    auto save = chip.save_state();
+    save.name = session.program_name();
+
+    if (const auto written = write_file(file, serialize_save_state(save)); !written) {
+        log_error("Cannot save the state: {}", written.error());
+        return;
+    }
+    log_info("Saved the state to \"{}\"", path_to_utf8(file));
+}
+
+
+auto App::load_state_from(const std::filesystem::path& file) -> void {
+    const auto bytes = read_rom_file(file, max_state_size);
+    if (!bytes) {
+        log_error("Cannot load the state: {}", bytes.error());
+        return;
+    }
+
+    auto save = deserialize_save_state(*bytes);
+    if (!save) {
+        log_error("Cannot load the state \"{}\": {}", path_to_utf8(file.filename()), save.error());
+        return;
+    }
+
+    const bool same_program = (save->origin == chip.program_origin()) && std::ranges::equal(save->program, chip.program());
+    const auto name = save->name;
+
+    if (const auto loaded = debugger.load_state(std::move(*save)); !loaded) {
+        log_error("Cannot load the state \"{}\": {}", path_to_utf8(file.filename()), loaded.error());
+        return;
+    }
+    session.state_loaded(name, same_program);
+
+    // The lines of the code editor have the addresses of the old program
+    if (!same_program) {
+        document.forget_program();
+        debugger.set_symbols({});
+        log_warning("The state holds another program, so the Code Editor shows no addresses now");
+    }
+    log_info("Loaded the state from \"{}\"", path_to_utf8(file));
+}
+
+
+auto App::save_state_dialog() -> void {
+    const auto folder = state_folder(platform.user_data_folder());
+    auto ec = std::error_code{};
+    std::filesystem::create_directories(folder, ec);
+
+    const auto stem = path_to_utf8(path_from_utf8(session.program_name()).stem());
+    const auto name = (stem.empty() ? std::string{"state"} : stem) + std::string{state_file_extension};
+
+    const auto chosen = show_dialog([&] {
+        return dialogs.save_file(platform.window(), FileKind::state, folder, name);
+    });
+    if (chosen) {
+        save_state_to(*chosen);
+    }
+}
+
+
+auto App::load_state_dialog() -> void {
+    const auto chosen = show_dialog([this] {
+        return dialogs.open_file(platform.window(), FileKind::state, state_folder(platform.user_data_folder()));
+    });
+    if (chosen) {
+        load_state_from(*chosen);
+    }
+}
+
+
+auto App::go_back(Command command) -> void {
+    const bool moved = (command == Command::step_back) ? debugger.step_back() : debugger.frame_back();
+    if (moved) {
+        return;
+    }
+
+    const auto* name = (command == Command::step_back) ? "Step Back" : "Frame Back";
+    if (!debugger.history_enabled()) {
+        log_info("{} needs the history. Turn on Record History in the Settings panel.", name);
+    }
+    else {
+        log_info("{}: the history has no earlier state", name);
+    }
+}
+
+
+auto App::sync_settings() -> void {
+    debugger.set_history_enabled(settings.history_enabled);
+    const size_t history_frames = size_t{settings.history_seconds} * Chip8::frame_rate;
+    if (debugger.history().capacity() != history_frames) {
+        debugger.set_history_length(history_frames);
+    }
+
+    // The machine of this session, for the next session
+    settings.variant = chip.variant();
+    settings.quirks = chip.quirks();
+    settings.instructions_per_frame = chip.instructions_per_frame();
+    settings.break_on_leave_program = debugger.break_on_leave_program();
+
+    // The next open of the ROM uses the configuration that the user chose for it
+    if (const auto change = session.take_profile_change()) {
+        settings.rom_profiles[change->first] = change->second;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    if (settings != last_settings) {
+        last_settings = settings;
+        settings_changed_at = now;
+        settings_unsaved = true;
+    }
+    if (settings_unsaved && ((now - settings_changed_at) >= settings_write_delay)) {
+        save_settings();
+    }
+}
+
+
+auto App::save_settings() -> void {
+    settings_unsaved = false;
+    if (const auto written = write_settings_file(settings_file(), settings); !written) {
+        log_error("Cannot save the settings: {}", written.error());
+    }
+}
+
+
+auto App::settings_file() const -> std::filesystem::path {
+    return platform.user_data_folder() / settings_file_name;
+}
+
+
 auto App::show_dialog(const std::function<FileDialogs::Result()>& show) -> std::optional<std::filesystem::path> {
     // The dialog blocks the main loop, so the beep would sound until the dialog closes
     beeper.set_active(false);
@@ -348,6 +565,44 @@ auto App::emulate(double seconds) -> void {
     // The longest time that one host frame spends in emulation
     static constexpr auto emulation_budget = std::chrono::milliseconds{12};
 
+    // Turbo runs more frames in the same time. The budget still limits the work.
+    const uint32_t speed = turbo ? settings.turbo_factor : 1;
+
+    // Rewind plays the history backward at the normal speed
+    if (rewinding) {
+        if (!rewind_active) {
+            rewind_active = true;
+            resume_after_rewind = debugger.is_running();
+            debugger.pause();
+        }
+
+        rewind_backlog = std::min(rewind_backlog + to_emulated_frames(seconds), max_backlog);
+        const auto frames = static_cast<uint32_t>(rewind_backlog);
+        rewind_backlog -= frames;
+
+        for (uint32_t frame = 0; frame < (frames * speed); ++frame) {
+            if (!debugger.frame_back()) {
+                break;
+            }
+        }
+
+        // Each frame back is a stop. The log does not show them.
+        (void)debugger.take_stop_event();
+        backlog = 0.0;
+        return;
+    }
+
+    if (rewind_active) {
+        rewind_active = false;
+        rewind_backlog = 0.0;
+        if (resume_after_rewind) {
+            debugger.run();
+        }
+        else {
+            document.reveal(chip.state().pc);
+        }
+    }
+
     if (!debugger.is_running()) {
         // Do not let time build up while paused
         backlog = 0.0;
@@ -358,9 +613,6 @@ auto App::emulate(double seconds) -> void {
 
     const auto frames = static_cast<uint32_t>(backlog);
     backlog -= frames;
-
-    // Turbo runs more frames in the same time. The budget still limits the work.
-    const uint32_t speed = turbo ? settings.turbo_factor : 1;
 
     if (frames > 0) {
         (void)debugger.run_frames(frames * speed, Debugger::clock::now() + emulation_budget);
@@ -425,6 +677,14 @@ auto App::perform(Command command) -> void {
             open_rom_dialog();
             break;
         }
+        case Command::open_rom_file: {
+            open_rom(pending_file);
+            break;
+        }
+        case Command::open_source_file: {
+            open_source(pending_file);
+            break;
+        }
         case Command::quit: {
             quit = true;
             break;
@@ -456,6 +716,33 @@ auto App::perform(Command command) -> void {
         }
         case Command::frame_advance: {
             debugger.frame_advance();
+            break;
+        }
+        case Command::step_back:
+        case Command::frame_back: {
+            go_back(command);
+            break;
+        }
+        case Command::quick_save: {
+            save_state_to(quick_state_file());
+            break;
+        }
+        case Command::quick_load: {
+            const auto file = quick_state_file();
+            auto ec = std::error_code{};
+            if (!std::filesystem::exists(file, ec)) {
+                log_info("Slot {} of \"{}\" has no state", settings.state_slot, session.program_name());
+                break;
+            }
+            load_state_from(file);
+            break;
+        }
+        case Command::save_state_as: {
+            save_state_dialog();
+            break;
+        }
+        case Command::load_state: {
+            load_state_dialog();
             break;
         }
         case Command::toggle_breakpoint: {

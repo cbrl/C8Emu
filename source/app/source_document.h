@@ -101,6 +101,9 @@ public:
     /// The result of the last check is now the program in the machine. The check must be of the current text.
     auto mark_loaded() -> void;
 
+    /// The program in the machine is not from the text now. The lines lose their addresses, and the labels go.
+    auto forget_program() -> void;
+
     /// The tags of the lines, from the program that last loaded from the text
     [[nodiscard]]
     auto lines() const noexcept -> const LineTracker& {

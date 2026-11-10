@@ -56,6 +56,27 @@ auto Debugger::reset() -> void {
 }
 
 
+auto Debugger::load_state(SaveState save) -> std::expected<void, std::string> {
+    const bool was_running = running;
+
+    auto loaded = chip.load_state(std::move(save));
+    if (!loaded) {
+        return loaded;
+    }
+
+    start();
+    running = was_running;
+    skip_stops_at_pc = true;
+
+    // Show the new location of a paused program
+    if (!running) {
+        stop_event = {.reason = StopReason::user, .pc = chip.state().pc};
+        unread_stop = stop_event;
+    }
+    return {};
+}
+
+
 auto Debugger::set_variant(Variant variant) -> std::expected<void, std::string> {
     if (variant == chip.variant()) {
         return {};
@@ -136,6 +157,7 @@ auto Debugger::step_into() -> void {
         const auto result = cycle();
         if (result.frame_end) {
             flush_log_limit();
+            record_history();
         }
         if (result.fault.kind != Fault::none) {
             stop({.reason = StopReason::fault, .pc = result.fault.pc, .fault = result.fault});
@@ -194,6 +216,83 @@ auto Debugger::frame_advance() noexcept -> void {
 }
 
 
+auto Debugger::step_back() -> bool {
+    if (!has_program() || !recording) {
+        return false;
+    }
+
+    // A replay with another configuration does not give the past states
+    if (history_config() != recorded_config) {
+        restart_history();
+        return false;
+    }
+
+    auto& state = chip.state();
+    const uint64_t target = state.total_cycles;
+    if ((target == 0) || !state_history.has_state_before(target)) {
+        return false;
+    }
+
+    // Go to the state just after the previous instruction, as a step leaves it. A frame end
+    // at that count can come from an idle cycle after the instruction, so start before the count.
+    const uint64_t previous = target - 1;
+    auto past = state_history.rewind_before(state_history.has_state_before(previous) ? previous : target);
+    if (!past) {
+        return false;
+    }
+
+    const uint16_t held_keys = state.keys;
+    const uint64_t since = past->total_cycles;
+    state = std::move(*past);
+
+    // Run again to that state, with the same keys at the same instructions
+    while (state.total_cycles < previous) {
+        if (const auto keys = state_history.keys_at(state.total_cycles, since)) {
+            state.keys = *keys;
+        }
+
+        const auto result = chip.cycle();
+        if ((result.fault.kind != Fault::none) || result.exited) {
+            break;
+        }
+        if (result.frame_end) {
+            state_history.record(state);
+        }
+    }
+
+    state_history.discard_keys_after(state.total_cycles);
+    state.keys = held_keys;
+    state_history.note_keys(state.total_cycles, held_keys);
+
+    skip_stops_at_pc = true;
+    stop({.reason = StopReason::step, .pc = state.pc});
+    return true;
+}
+
+
+auto Debugger::frame_back() -> bool {
+    if (!has_program() || !recording) {
+        return false;
+    }
+
+    if (history_config() != recorded_config) {
+        restart_history();
+        return false;
+    }
+
+    auto past = state_history.rewind_before(chip.state().total_cycles);
+    if (!past) {
+        return false;
+    }
+
+    restore(std::move(*past));
+
+    skip_stops_at_pc = true;
+    stop({.reason = StopReason::step, .pc = chip.state().pc});
+    return true;
+}
+
+
 auto Debugger::run_frames(uint32_t frames, clock::time_point deadline) -> RunStats {
     // Reading the clock costs more than a cycle, so check it only now and then
     static constexpr uint32_t clock_check_interval = 4096;
@@ -227,6 +326,7 @@ auto Debugger::run_frames(uint32_t frames, clock::time_point deadline) -> RunSta
             ++stats.frames;
             check_clock = true;
             flush_log_limit();
+            record_history();
 
             if (goal.kind == GoalKind::frame_end) {
                 stop({.reason = StopReason::step, .pc = chip.state().pc});
@@ -257,6 +357,41 @@ auto Debugger::take_stop_event() noexcept -> std::optional<StopEvent> {
 
 auto Debugger::take_log_messages() -> std::vector<std::string> {
     return std::exchange(log_messages, {});
+}
+
+
+//--------------------------------------------------------------------------------
+// Input and history
+//--------------------------------------------------------------------------------
+
+auto Debugger::set_key(uint8_t key, bool down) -> void {
+    const uint16_t before = chip.state().keys;
+    chip.set_key(key, down);
+
+    const auto& state = chip.state();
+    if (recording && (state.keys != before)) {
+        state_history.note_keys(state.total_cycles, state.keys);
+    }
+}
+
+
+auto Debugger::set_history_enabled(bool enable) -> void {
+    if (enable == recording) {
+        return;
+    }
+
+    recording = enable;
+    if (recording) {
+        restart_history();
+    }
+    else {
+        state_history.clear();
+    }
+}
+
+
+auto Debugger::state_edited() -> void {
+    restart_history();
 }
 
 
@@ -441,6 +576,54 @@ auto Debugger::start() -> void {
 
     // The counts of the old program or of the time before the reset mean nothing now
     memory_profiler.clear(chip.state().memory.size());
+
+    restart_history();
+}
+
+
+auto Debugger::restart_history() -> void {
+    state_history.clear();
+    recorded_config = history_config();
+
+    if (recording && has_program()) {
+        state_history.record(chip.state());
+    }
+}
+
+
+auto Debugger::record_history() -> void {
+    if (!recording) {
+        return;
+    }
+
+    // The user changed the quirks or the speed since the last frame
+    if (history_config() != recorded_config) {
+        restart_history();
+        return;
+    }
+    state_history.record(chip.state());
+}
+
+
+auto Debugger::history_config() const noexcept -> HistoryConfig {
+    return HistoryConfig{
+        .variant = chip.variant(),
+        .quirks  = chip.quirks(),
+        .instructions_per_frame = chip.instructions_per_frame(),
+    };
+}
+
+
+auto Debugger::restore(MachineState&& past) -> void {
+    auto& state = chip.state();
+    const uint16_t held_keys = state.keys;
+
+    state = std::move(past);
+    state.keys = held_keys;
+
+    // The next frames of the journal belong to the time that the machine left
+    state_history.discard_keys_after(state.total_cycles);
+    state_history.note_keys(state.total_cycles, held_keys);
 }
 
 

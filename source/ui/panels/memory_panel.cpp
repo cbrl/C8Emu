@@ -33,7 +33,8 @@ auto legend_item(ImU32 color, const char* label) -> void {
 
 MemoryPanel::MemoryPanel() {
     editor.BgColorFn = &MemoryPanel::background_color;
-    editor.UserData = &colors;
+    editor.WriteFn = &MemoryPanel::write_byte;
+    editor.UserData = &data;
 }
 
 
@@ -66,7 +67,7 @@ auto MemoryPanel::draw(UiContext& context) -> void {
     ImGui::SameLine();
     legend_item(font_color, "Font");
 
-    colors = ColorSource{
+    data = EditorData{
         .state         = &state,
         .debugger      = &context.debugger,
         .program_begin = context.chip.program_origin(),
@@ -74,6 +75,11 @@ auto MemoryPanel::draw(UiContext& context) -> void {
     };
 
     editor.DrawContents(state.memory.data(), state.memory.size());
+
+    // A replay from the history would not give the edited bytes
+    if (data.edited) {
+        context.requests.state_edited = true;
+    }
 
     if (jumped) {
         // A jump also selects the byte for editing, and the edit field takes the keyboard.
@@ -88,7 +94,7 @@ auto MemoryPanel::draw(UiContext& context) -> void {
 
 
 auto MemoryPanel::background_color(const ImU8* /*memory*/, size_t address, void* user_data) -> ImU32 {
-    const auto& source = *static_cast<const ColorSource*>(user_data);
+    const auto& source = *static_cast<const EditorData*>(user_data);
     if (source.state == nullptr) {
         return 0;
     }
@@ -120,6 +126,12 @@ auto MemoryPanel::background_color(const ImU8* /*memory*/, size_t address, void*
     }
 
     return 0;
+}
+
+
+auto MemoryPanel::write_byte(ImU8* memory, size_t address, ImU8 value, void* user_data) -> void {
+    memory[address] = value;
+    static_cast<EditorData*>(user_data)->edited = true;
 }
 
 

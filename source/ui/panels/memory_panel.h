@@ -37,22 +37,26 @@ public:
     auto draw(UiContext& context) -> void override;
 
 private:
-    // What the background colors show in this frame
-    struct ColorSource {
+    // What the background colors show in this frame, and the edits of the frame
+    struct EditorData {
         const MachineState* state         = nullptr;
         const Debugger*     debugger      = nullptr;
         uint32_t            program_begin = 0;
         uint32_t            program_end   = 0;
+        bool                edited        = false; // The user wrote a byte
     };
 
-    // MemoryEditor::BgColorFn. user_data points to a ColorSource.
+    // MemoryEditor::BgColorFn. user_data points to an EditorData.
     static auto background_color(const ImU8* memory, size_t address, void* user_data) -> ImU32;
+
+    // MemoryEditor::WriteFn. user_data points to an EditorData.
+    static auto write_byte(ImU8* memory, size_t address, ImU8 value, void* user_data) -> void;
 
     // Scroll to an address
     auto go_to(size_t address) -> void;
 
     MemoryEditor editor;
-    ColorSource colors;
+    EditorData data;
     bool jumped = false;
 };
 

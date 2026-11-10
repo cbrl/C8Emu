@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <format>
 #include <fstream>
+#include <limits>
 #include <system_error>
 
 namespace c8 {
@@ -92,8 +93,8 @@ auto read_rom_file(const std::filesystem::path& file, size_t max_size) -> std::e
 }
 
 
-auto read_text_file(const std::filesystem::path& file, size_t max_size) -> std::expected<std::string, std::string> {
-    return read_file(file, max_size, true, "text file").transform([](const std::vector<uint8_t>& data) {
+auto read_text_file(const std::filesystem::path& file) -> std::expected<std::string, std::string> {
+    return read_file(file, std::numeric_limits<uint32_t>::max(), true, "text file").transform([](const std::vector<uint8_t>& data) {
         auto text = std::string{reinterpret_cast<const char*>(data.data()), data.size()};
 
         if (text.starts_with("\xEF\xBB\xBF")) {
@@ -125,6 +126,19 @@ auto write_file(const std::filesystem::path& file, std::span<const uint8_t> data
 auto write_text_file(const std::filesystem::path& file, std::string_view text) -> std::expected<void, std::string> {
     const auto bytes = std::span{reinterpret_cast<const uint8_t*>(text.data()), text.size()};
     return write_file(file, bytes);
+}
+
+auto state_folder(const std::filesystem::path& user_data) -> std::filesystem::path {
+    return user_data / "states";
+}
+
+
+auto state_slot_file(const std::filesystem::path& folder, std::string_view program_name, uint32_t slot) -> std::filesystem::path {
+    auto stem = path_to_utf8(path_from_utf8(program_name).stem());
+    if (stem.empty()) {
+        stem = "program";
+    }
+    return folder / path_from_utf8(std::format("{}.{}{}", stem, slot, state_file_extension));
 }
 
 } // namespace c8

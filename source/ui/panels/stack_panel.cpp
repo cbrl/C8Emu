@@ -59,6 +59,7 @@ auto StackPanel::draw(UiContext& context) -> void {
             ImGui::SetNextItemWidth(ImGui::CalcTextSize(value_text.c_str()).x);
             if (ImGui::InputText("##return", &value_text, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) {
                 entry = parse_hex<uint16_t>(value_text).value_or(entry);
+                context.requests.state_edited = true;
             }
             ImGui::SetItemTooltip("The return address. Edit it and press Enter.");
 

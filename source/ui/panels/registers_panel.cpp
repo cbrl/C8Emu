@@ -24,18 +24,20 @@ auto hex_field(const char* id, std::string& text) -> bool {
     return ImGui::InputText(id, &text, edit_flags);
 }
 
-// A labeled hex field for a value. Enter writes the new value.
+// A labeled hex field for a value. Enter writes the new value. Returns true after Enter.
 template<typename T>
-auto value_field(const char* label, T& value, int digits) -> void {
+auto value_field(const char* label, T& value, int digits) -> bool {
     auto text = std::format("0x{:0{}X}", value, digits);
 
     ImGui::PushID(label);
     ImGui::TextUnformatted(label);
     ImGui::SameLine();
-    if (hex_field("##value", text)) {
+    const bool entered = hex_field("##value", text);
+    if (entered) {
         value = parse_hex<T>(text).value_or(value);
     }
     ImGui::PopID();
+    return entered;
 }
 
 // A small circle that is lit when `on` is true, then a label
@@ -57,30 +59,33 @@ auto indicator(bool on, const char* label) -> void {
 }
 
 
-auto draw_registers(MachineState& state) -> void {
+// The register fields. Returns true if the user changed a register.
+auto draw_registers(MachineState& state) -> bool {
+    bool edited = false;
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{0, 0});
 
     for (uint8_t i = 0; i <= 0xF; ++i) {
         const auto label = std::format("v{:X}:", i);
-        value_field(label.c_str(), state.v[i], 2);
+        edited |= value_field(label.c_str(), state.v[i], 2);
     }
 
     ImGui::Separator();
-    value_field(" I:", state.i, 4);
-    value_field("PC:", state.pc, 4);
+    edited |= value_field(" I:", state.i, 4);
+    edited |= value_field("PC:", state.pc, 4);
 
     ImGui::Separator();
-    value_field("DT:", state.delay_timer, 2);
+    edited |= value_field("DT:", state.delay_timer, 2);
     ImGui::SameLine();
     ImGui::TextDisabled("(%u)", static_cast<unsigned>(state.delay_timer));
 
-    value_field("ST:", state.sound_timer, 2);
+    edited |= value_field("ST:", state.sound_timer, 2);
     ImGui::SameLine();
     ImGui::TextDisabled("(%u)", static_cast<unsigned>(state.sound_timer));
     ImGui::SameLine();
     indicator(state.sound_timer > 0, "Sound");
 
     ImGui::PopStyleVar();
+    return edited;
 }
 
 
@@ -162,7 +167,10 @@ auto draw_bits(std::span<const uint8_t> bytes) -> void {
 }
 
 
-auto draw_platform(MachineState& state, Variant variant) -> void {
+// The state of the platform. Returns true if the user changed a flag register.
+auto draw_platform(MachineState& state, Variant variant) -> bool {
+    bool edited = false;
+
     ImGui::Text("%s, %zux%zu", std::string{to_string(variant)}.c_str(), state.display.width(), state.display.height());
 
     if (state.exited) {
@@ -197,12 +205,15 @@ auto draw_platform(MachineState& state, Variant variant) -> void {
             ImGui::PushID(i);
             if (hex_field("##flag", text)) {
                 state.flags[i] = parse_hex<uint8_t>(text).value_or(state.flags[i]);
+                edited = true;
             }
             ImGui::SetItemTooltip("Flag %u", static_cast<unsigned>(i));
             ImGui::PopID();
         }
         ImGui::PopStyleVar();
     }
+
+    return edited;
 }
 
 } // namespace
@@ -214,7 +225,8 @@ auto RegistersPanel::draw(UiContext& context) -> void {
         auto& state = chip.state();
 
         ImGui::SeparatorText("Registers");
-        draw_registers(state);
+        // A replay from the history would not give an edited value
+        bool edited = draw_registers(state);
 
         ImGui::SeparatorText("Keypad");
         const bool waiting = chip.waiting_for_key();
@@ -234,7 +246,11 @@ auto RegistersPanel::draw(UiContext& context) -> void {
         draw_counters(chip);
 
         ImGui::SeparatorText("Platform");
-        draw_platform(state, chip.variant());
+        edited |= draw_platform(state, chip.variant());
+
+        if (edited) {
+            context.requests.state_edited = true;
+        }
     }
     ImGui::End();
 }

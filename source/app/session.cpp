@@ -4,6 +4,7 @@
 #include "chip8/chip8.h"
 #include "debugger/debugger.h"
 #include "frontend/rom_files.h"
+#include "util/crc32.h"
 #include "util/log.h"
 
 #include <system_error>
@@ -15,12 +16,31 @@ Session::Session(Chip8& machine, Debugger& run_control) noexcept : chip(machine)
 }
 
 
-auto Session::open_rom(const std::filesystem::path& file, bool auto_detect) -> bool {
+auto Session::open_rom(const std::filesystem::path& file, const Settings& settings) -> bool {
     // XO-CHIP has the largest memory. load() checks the size for the platform.
     const auto data = read_rom_file(file, Chip8::max_program_size(Variant::xochip));
     if (!data) {
         log_error("Cannot load the ROM: {}", data.error());
         return false;
+    }
+
+    const auto rom_crc = crc32(*data);
+    const auto previous = chip.variant();
+
+    // The configuration that the user chose for this ROM before
+    if (const auto it = settings.rom_profiles.find(rom_crc); it != settings.rom_profiles.end()) {
+        const auto& profile = it->second;
+        if (const auto loaded = debugger.load_program(*data, MachineState::program_start, profile.variant); !loaded) {
+            log_error("Cannot load the ROM: {}", loaded.error());
+            return false;
+        }
+        chip.set_quirks(profile.quirks);
+        chip.set_instructions_per_frame(profile.instructions_per_frame);
+
+        loaded_rom(file, rom_crc);
+        log_info("Machine: the saved settings of this ROM ({}, {} instructions per frame)",
+            to_string(profile.variant), chip.instructions_per_frame());
+        return true;
     }
 
     // The extension can name the platform. If not, the code can show it.
@@ -31,26 +51,32 @@ auto Session::open_rom(const std::filesystem::path& file, bool auto_detect) -> b
         variant = *named;
         reason = "from the file extension";
     }
-    else if (auto_detect) {
+    else if (settings.auto_detect_platform) {
         auto guess = detect_platform(*data, MachineState::program_start);
         variant = guess.variant;
         reason = std::move(guess.reason);
     }
 
-    const auto previous = chip.variant();
     if (const auto loaded = load(*data, variant); !loaded) {
         log_error("Cannot load the ROM: {}", loaded.error());
         return false;
     }
 
-    rom_file = file;
-    name = path_to_utf8(file.filename());
-
-    log_info("Loaded \"{}\" ({} bytes)", name, chip.program().size());
+    loaded_rom(file, rom_crc);
     if (variant != previous) {
         log_info("Platform: {} ({})", to_string(variant), reason);
     }
     return true;
+}
+
+
+auto Session::loaded_rom(const std::filesystem::path& file, uint32_t rom_crc) -> void {
+    rom_file = file;
+    name = path_to_utf8(file.filename());
+    crc = rom_crc;
+    known_profile = current_profile();
+
+    log_info("Loaded \"{}\" ({} bytes)", name, chip.program().size());
 }
 
 
@@ -62,6 +88,7 @@ auto Session::load_assembled(std::span<const uint8_t> program, Variant variant, 
     }
 
     name = source_name;
+    crc.reset();
     log_info("Assembled and loaded \"{}\" ({} bytes)", name, program.size());
     if (variant != previous) {
         log_info("Platform: {} (from the platform line)", to_string(variant));
@@ -88,6 +115,43 @@ auto Session::reset() -> void {
     if (!name.empty()) {
         log_info("Reset \"{}\"", name);
     }
+}
+
+
+auto Session::state_loaded(std::string_view state_name, bool same_program) -> void {
+    if (!state_name.empty()) {
+        name = state_name;
+    }
+    if (!same_program) {
+        crc.reset();
+    }
+
+    // The configuration of the save state is not a choice of the user for the ROM
+    known_profile = current_profile();
+}
+
+
+auto Session::take_profile_change() -> std::optional<std::pair<uint32_t, RomProfile>> {
+    if (!crc) {
+        return std::nullopt;
+    }
+
+    const auto profile = current_profile();
+    if (profile == known_profile) {
+        return std::nullopt;
+    }
+
+    known_profile = profile;
+    return std::pair{*crc, profile};
+}
+
+
+auto Session::current_profile() const noexcept -> RomProfile {
+    return RomProfile{
+        .variant = chip.variant(),
+        .quirks  = chip.quirks(),
+        .instructions_per_frame = chip.instructions_per_frame(),
+    };
 }
 
 

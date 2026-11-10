@@ -14,6 +14,7 @@ namespace c8 {
 enum class FileKind : uint8_t {
     rom,    ///< A CHIP-8 program (.ch8)
     source, ///< An assembly source (.c8s)
+    state,  ///< A save state (.c8state)
 };
 
 

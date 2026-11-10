@@ -51,6 +51,9 @@ private:
     static auto draw_edit_menu(UiContext& context) -> void;
     static auto draw_view_menu(UiContext& context) -> void;
 
+    // Give the view options of the settings (line numbers, whitespace, mini map) to the editor
+    static auto apply_view_settings(UiContext& context) -> void;
+
     // A line above the editor while the text differs from the loaded program
     static auto draw_banner(UiContext& context) -> void;
 

@@ -22,8 +22,12 @@ public:
     auto draw(UiContext& context) -> void;
 
 private:
+    // Open and close the panels as the settings say. Then note each change in the settings.
+    auto sync_open_panels(Settings& settings) -> void;
+
     std::vector<std::unique_ptr<Panel>> panels;
     bool reset_layout = false;
+    bool panels_restored = false;
 };
 
 } // namespace c8

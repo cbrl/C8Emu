@@ -1,5 +1,6 @@
 #include "platform.h"
 
+#include "frontend/rom_files.h"
 #include "util/log.h"
 
 #include <algorithm>
@@ -48,6 +49,21 @@ auto SDLCALL forward_sdl_log(void* user_data, int category, SDL_LogPriority prio
     if (default_log_output != nullptr) {
         default_log_output(user_data, category, priority, message);
     }
+}
+
+
+// The SDL preference path of C8Emu, or the current folder if SDL cannot give it
+auto find_user_data_folder() -> std::filesystem::path {
+    char* folder = SDL_GetPrefPath("cbrl", "C8Emu");
+    if (folder == nullptr) {
+        log_warning("No user data folder: {}. The settings go to the current folder.", SDL_GetError());
+        return std::filesystem::path{"."};
+    }
+
+    // SDL ends the path with a separator
+    auto path = path_from_utf8(folder);
+    SDL_free(folder);
+    return path.has_filename() ? path : path.parent_path();
 }
 
 
@@ -160,9 +176,14 @@ Platform::ImGuiLayer::~ImGuiLayer() {
 //----------------------------------------------------------------------------------
 
 Platform::Platform() :
+    data_folder(find_user_data_folder()),
+    layout_file(path_to_utf8(data_folder / "imgui.ini")),
     sdl_window(create_window()),
     gl_context(create_context(sdl_window.get())),
     imgui(sdl_window.get(), gl_context.get()) {
+
+    // ImGui reads the window layout at the first frame
+    ImGui::GetIO().IniFilename = layout_file.c_str();
 
     apply_ui_scale();
 

@@ -28,12 +28,14 @@ add_library(
     source/chip8/analysis.cpp
     source/chip8/chip8.cpp
     source/chip8/quirks.cpp
+    source/chip8/serialize.cpp
     source/chip8/isa/isa.cpp
     source/audio/tone_generator.cpp
     source/debugger/address_names.cpp
     source/debugger/breakpoint_remap.cpp
     source/debugger/debug_expression.cpp
     source/debugger/debugger.cpp
+    source/debugger/history.cpp
     source/debugger/line_tracker.cpp
     source/debugger/profiler.cpp
     source/debugger/trace.cpp
@@ -53,6 +55,7 @@ target_compile_features(c8emu_lib PUBLIC cxx_std_23)
 # ---- Declare executable ----
 
 find_package(glad CONFIG REQUIRED)
+find_package(glaze CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(imgui-color-text-edit CONFIG REQUIRED)
 find_package(imgui-memory-editor CONFIG REQUIRED)
@@ -65,6 +68,7 @@ add_executable(
     source/app/app.cpp
     source/app/commands.cpp
     source/app/session.cpp
+    source/app/settings_store.cpp
     source/app/source_document.cpp
     source/platform/beeper.cpp
     source/platform/display_texture.cpp
@@ -103,6 +107,7 @@ target_link_libraries(
     c8emu_exe PRIVATE
     c8emu_lib
     glad::glad
+    glaze::glaze
     imgui::imgui
     imgui-color-text-edit::imgui-color-text-edit
     imgui-memory-editor::imgui-memory-editor

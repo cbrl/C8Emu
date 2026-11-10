@@ -4,6 +4,7 @@
 #include "chip8/chip8.h"
 #include "debugger/debugger.h"
 #include "frontend/rom_files.h"
+#include "frontend/settings.h"
 #include "ui/breakpoint_marker.h"
 #include "ui/command_ui.h"
 #include "ui/editor_assist.h"
@@ -177,6 +178,7 @@ auto EditorPanel::draw(UiContext& context) -> void {
     // Before the editor draws, so the markers show in this frame
     const auto pc = paused_pc(context);
     document.update_view(pc);
+    apply_view_settings(context);
 
     const float font_size = ImGui::GetFontSize();
     ImGui::SetNextWindowSize({font_size * 30.0f, font_size * 30.0f}, ImGuiCond_FirstUseEver);
@@ -351,24 +353,29 @@ auto EditorPanel::draw_view_menu(UiContext& context) -> void {
         return;
     }
 
-    auto& editor = context.document.editor();
-
-    bool line_numbers = editor.IsShowLineNumbersEnabled();
-    if (ImGui::MenuItem("Line Numbers", nullptr, &line_numbers)) {
-        editor.SetShowLineNumbersEnabled(line_numbers);
-    }
-
-    bool whitespace = editor.IsShowWhitespacesEnabled();
-    if (ImGui::MenuItem("Show Whitespace", nullptr, &whitespace)) {
-        editor.SetShowWhitespacesEnabled(whitespace);
-    }
-
-    bool mini_map = editor.IsShowMiniMapEnabled();
-    if (ImGui::MenuItem("Mini Map", nullptr, &mini_map)) {
-        editor.SetShowMiniMapEnabled(mini_map);
-    }
+    // The next frame gives the changes to the editor
+    auto& settings = context.settings;
+    ImGui::MenuItem("Line Numbers", nullptr, &settings.editor_line_numbers);
+    ImGui::MenuItem("Show Whitespace", nullptr, &settings.editor_whitespace);
+    ImGui::MenuItem("Mini Map", nullptr, &settings.editor_mini_map);
 
     ImGui::EndMenu();
+}
+
+
+auto EditorPanel::apply_view_settings(UiContext& context) -> void {
+    const auto& settings = context.settings;
+    auto& editor = context.document.editor();
+
+    if (editor.IsShowLineNumbersEnabled() != settings.editor_line_numbers) {
+        editor.SetShowLineNumbersEnabled(settings.editor_line_numbers);
+    }
+    if (editor.IsShowWhitespacesEnabled() != settings.editor_whitespace) {
+        editor.SetShowWhitespacesEnabled(settings.editor_whitespace);
+    }
+    if (editor.IsShowMiniMapEnabled() != settings.editor_mini_map) {
+        editor.SetShowMiniMapEnabled(settings.editor_mini_map);
+    }
 }
 
 

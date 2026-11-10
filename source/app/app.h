@@ -15,6 +15,7 @@
 #include "util/stopwatch/stopwatch.h"
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -52,11 +53,17 @@ private:
     // Ask the user for a ROM file, then load it and show its disassembly
     auto open_rom_dialog() -> void;
 
+    // Load a ROM file and show its disassembly. The file goes to the front of the recent ROMs.
+    auto open_rom(const std::filesystem::path& file) -> void;
+
     // Show the disassembly of the loaded program in the code editor
     auto show_disassembly() -> void;
 
     // Ask the user for a source file, then show it in the code editor
     auto open_source_dialog() -> void;
+
+    // Show a source file in the code editor. The file goes to the front of the recent sources.
+    auto open_source(const std::filesystem::path& file) -> void;
 
     // Save the source text. Ask for a file if the text has none or if choose_file is true.
     // Returns false if the text is not saved.
@@ -74,6 +81,36 @@ private:
     // Assemble the source text and write a summary of the problems to the log
     auto check_source() -> void;
 
+    // The file of the selected quick save slot of the program
+    [[nodiscard]]
+    auto quick_state_file() const -> std::filesystem::path;
+
+    // Write the machine to a save state file
+    auto save_state_to(const std::filesystem::path& file) -> void;
+
+    // Restore the machine from a save state file
+    auto load_state_from(const std::filesystem::path& file) -> void;
+
+    // Ask the user for a save state file, then write the machine to it
+    auto save_state_dialog() -> void;
+
+    // Ask the user for a save state file, then restore the machine from it
+    auto load_state_dialog() -> void;
+
+    // Step back or frame back. Logs the reason if the history has no earlier state.
+    auto go_back(Command command) -> void;
+
+    // Give the settings to the debugger, copy the machine configuration into the settings,
+    // and write the settings file a short time after a change
+    auto sync_settings() -> void;
+
+    // Write the settings file now
+    auto save_settings() -> void;
+
+    // The settings file in the user data folder
+    [[nodiscard]]
+    auto settings_file() const -> std::filesystem::path;
+
     // Show a file dialog. Returns the chosen file, or std::nullopt if the user cancelled or the dialog failed.
     auto show_dialog(const std::function<FileDialogs::Result()>& show) -> std::optional<std::filesystem::path>;
 
@@ -81,7 +118,8 @@ private:
     [[nodiscard]]
     auto source_folder() const -> std::filesystem::path;
 
-    // Run the emulated frames that are due after `seconds` of host time
+    // Run the emulated frames that are due after `seconds` of host time. While the
+    // rewind key is held, go back one recorded frame for each emulated frame instead.
     auto emulate(double seconds) -> void;
 
     // Write each stop of execution to the log
@@ -121,6 +159,24 @@ private:
 
     // The turbo key was held in the last frame
     bool turbo = false;
+
+    // The rewind key was held in the last frame, and the history can play backward
+    bool rewinding = false;
+
+    // The rewind started in the last frames. It paused the program, if the program ran.
+    bool rewind_active = false;
+    bool resume_after_rewind = false;
+    double rewind_backlog = 0.0;
+
+    // The settings at the end of the last frame. A difference from `settings` is a change.
+    Settings last_settings;
+
+    // The settings changed at this time, and the settings file does not have the change yet
+    bool settings_unsaved = false;
+    std::chrono::steady_clock::time_point settings_changed_at;
+
+    // The file of a request to open a file. It waits with the command for an answer about unsaved changes.
+    std::filesystem::path pending_file;
 
     // The XO-CHIP sound that the beeper plays
     AudioPattern audio_pattern;

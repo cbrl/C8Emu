@@ -26,6 +26,9 @@ The Log tells which breakpoints were removed.
 | Step Over | F10 | Run a call or a key wait (FX0A) to its end. |
 | Step Out | Shift+F11 | Run until the current subroutine returns. |
 | Frame Advance | F6 | Run to the end of the frame. |
+| Step Back | F7 | Go back one instruction. |
+| Frame Back | Shift+F6 | Go back to the end of the previous frame. |
+| Rewind | hold Backspace | Play the program backward. |
 | Run to Cursor | Ctrl+F10 | Run until the PC reaches the cursor line. |
 | Toggle Breakpoint | F9 | Add or remove the breakpoint of the cursor line. |
 | Reset | Ctrl+R | Start the program again. |
@@ -34,6 +37,48 @@ The Log tells which breakpoints were removed.
 Step Over, Step Out, Run to Cursor, and Frame Advance run at the normal speed,
 so the timers count as in real time. A breakpoint, a watchpoint, the break
 condition, or a fault stops them before their goal.
+
+## History
+
+While Record History is on, the debugger records the state of the machine at
+each frame end. The Length setting sets how many seconds the history keeps.
+
+- **Step Back** (F7) goes back one instruction. The debugger restores a
+  recorded state, then runs the instructions again until the previous
+  instruction completes. Breakpoints do not stop this replay.
+- **Frame Back** (Shift+F6) goes back to the end of the previous frame.
+- **Rewind**: (hold Backspace) The program plays backward at the normal speed.
+  Hold Tab too for a faster rewind.
+
+A replay presses the keys at the same instructions as before, so it gives the
+same states. When you go back, the history removes the states after that point.
+
+These events clear the history. Then the history starts again at the current
+state:
+
+- Loading a program or save state, or a reset.
+- Changing the platform, the quirks, or the instructions per frame.
+- Editing the memory, the registers, the stack, the flag registers, or the
+  random number seed.
+
+The history does not go back in the trace or in the profiler. They keep the
+instructions that ran, also after a step back.
+
+## Save states
+
+A save state holds the complete state of the machine and its configuration.
+
+| Command | Key | Effect |
+|---|---|---|
+| Quick Save State | F2 | Save the state to the selected slot of the program. |
+| Quick Load State | F4 | Load the state from the selected slot of the program. |
+| State Slot | | Select a slot from 1 to 9. The menu tells which slots hold a state. |
+| Save State As... | | Save the state to a file that you choose. |
+| Load State... | | Load the state from a file that you choose. |
+
+The slot files are in the `states` folder of the user data folder, for example
+`%APPDATA%\cbrl\C8Emu\states\Brix.1.c8state`. The Log shows the user data
+folder when C8Emu starts.
 
 ## Breakpoints
 
@@ -138,7 +183,7 @@ it. Turn on Record first. The trace keeps the newest 100,000 instructions.
 The Profiler panel counts the executions of each address and the reads and
 writes of each byte. Turn on Profile first. A load or a reset clears the counts.
 
-- **Hot Spots**: the 100 addresses that run most often, with their share of
+- **Hot Spots**: the top addresses that run most often, with their share of
   all executions.
 - **Heat Map**: all memory as cells. Red shows executions, green shows writes,
   and blue shows reads. Hover a cell to see its counts.

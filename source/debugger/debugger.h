@@ -14,6 +14,7 @@
 
 #include "chip8/chip8.h"
 #include "debugger/debug_expression.h"
+#include "debugger/history.h"
 #include "debugger/profiler.h"
 #include "debugger/trace.h"
 #include "debugger/watchpoints.h"
@@ -113,6 +114,11 @@ struct Breakpoint {
  *          profiler) cost time only while they are on. While all of them are
  *          off, a cycle checks one flag.
  *
+ *          The history records the state at each frame end. step_back() and
+ *          frame_back() use it to go back in time. A replay from a recorded
+ *          state presses the same keys at the same instructions, so the keys
+ *          must change through set_key().
+ *
  *          The debugger keeps a reference to the machine. The machine must
  *          outlive the debugger.
  */
@@ -140,6 +146,16 @@ public:
 
     /// Reset the machine and run the program again. A breakpoint at the origin stops it at once.
     auto reset() -> void;
+
+    /**
+     * @brief Restore a save state (see Chip8::load_state())
+     *
+     * @details Execution continues if it ran before. If not, the stop event
+     *          shows the new PC. The history starts again, and the profiler
+     *          counts are cleared. On failure, nothing changes.
+     */
+    [[nodiscard]]
+    auto load_state(SaveState save) -> std::expected<void, std::string>;
 
     /// Change the variant of the machine. On success, the machine resets and runs the program.
     [[nodiscard]]
@@ -221,6 +237,27 @@ public:
     auto frame_advance() noexcept -> void;
 
     /**
+     * @brief Go back one instruction and pause
+     *
+     * @details The machine goes back to a recorded state before the previous
+     *          instruction. Then it runs again until the previous instruction
+     *          completes, so the state is the state that a step gives.
+     *          Breakpoints, the trace, and the profiler do not see the replay.
+     *
+     * @return False if the history has no earlier state
+     */
+    auto step_back() -> bool;
+
+    /**
+     * @brief Go back to the previous recorded frame end and pause
+     *
+     * @details A rewind calls this once for each emulated frame.
+     *
+     * @return False if the history has no earlier state
+     */
+    auto frame_back() -> bool;
+
+    /**
      * @brief Run frames until a stop or a deadline
      *
      * @details The call does nothing while execution is paused. The deadline
@@ -257,6 +294,45 @@ public:
     /// The messages of the logpoints since the last call, oldest first
     [[nodiscard]]
     auto take_log_messages() -> std::vector<std::string>;
+
+
+    //--------------------------------------------------------------------------------
+    // Input
+    //--------------------------------------------------------------------------------
+
+    /// Set the state of a key (0x0-0xF). The history notes the change, so a replay presses the key at the same instruction.
+    auto set_key(uint8_t key, bool down) -> void;
+
+
+    //--------------------------------------------------------------------------------
+    // History
+    //--------------------------------------------------------------------------------
+
+    /// Record the state at each frame end. Off clears the history.
+    auto set_history_enabled(bool enable) -> void;
+
+    [[nodiscard]]
+    auto history_enabled() const noexcept -> bool {
+        return recording;
+    }
+
+    /// Set the largest number of frames in the history. The oldest frames go first.
+    auto set_history_length(size_t frames) -> void {
+        state_history.set_capacity(frames);
+    }
+
+    [[nodiscard]]
+    auto history() const noexcept -> const History& {
+        return state_history;
+    }
+
+    /**
+     * @brief Tell the debugger that the user changed the memory, the registers, or the seed
+     *
+     * @details A replay from a recorded state would not give the changed
+     *          values, so the history starts again from the current state.
+     */
+    auto state_edited() -> void;
 
 
     //--------------------------------------------------------------------------------
@@ -424,8 +500,30 @@ private:
         uint8_t  sp   = 0;
     };
 
+    // The configuration that the history was recorded with. A replay with another configuration gives other states.
+    struct HistoryConfig {
+        Variant  variant = Variant::chip8;
+        Quirks   quirks;
+        uint32_t instructions_per_frame = 0;
+
+        friend auto operator==(const HistoryConfig&, const HistoryConfig&) -> bool = default;
+    };
+
     // Clear the stop state after a load or a reset, and run if a program exists
     auto start() -> void;
+
+    // Clear the history and record the current state as its first state
+    auto restart_history() -> void;
+
+    // Record the state at a frame end. A change of the configuration starts the history again.
+    auto record_history() -> void;
+
+    // The configuration of the machine now
+    [[nodiscard]]
+    auto history_config() const noexcept -> HistoryConfig;
+
+    // Restore a recorded state. The held keys stay, and the journal notes them.
+    auto restore(MachineState&& past) -> void;
 
     // Run until the machine reaches a goal
     auto run_until(const Goal& target) noexcept -> void;
@@ -464,6 +562,10 @@ private:
 
     Trace instruction_trace;
     Profiler memory_profiler;
+
+    History state_history;
+    HistoryConfig recorded_config;
+    bool recording = true;
 
     // A watchpoint, the break condition, the trace, or the profiler is on
     bool tools_on = false;

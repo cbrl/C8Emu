@@ -121,6 +121,22 @@ public:
         return std::span{px}.first(size());
     }
 
+    /**
+     * @brief Set the size and all pixels, for example from a save state
+     *
+     * @details The size is clamped as in resize(). Each pixel keeps only its
+     *          plane bits. If `values` has fewer pixels than the display, the
+     *          other pixels are 0.
+     */
+    auto assign(size_t width, size_t height, std::span<const uint8_t> values) noexcept -> void {
+        resize(width, height);
+
+        const auto count = std::min(values.size(), size());
+        for (size_t index = 0; index < count; ++index) {
+            px[index] = static_cast<uint8_t>(values[index] & all_planes);
+        }
+    }
+
     /// A counter that increases on each change. A renderer can skip uploads when it does not change.
     [[nodiscard]]
     auto version() const noexcept -> uint64_t {

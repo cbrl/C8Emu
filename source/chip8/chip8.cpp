@@ -5,6 +5,7 @@
 #include <array>
 #include <chrono>
 #include <format>
+#include <utility>
 
 namespace c8 {
 namespace {
@@ -198,6 +199,77 @@ auto Chip8::apply_preset(const Preset& preset) -> std::expected<void, std::strin
 
 auto Chip8::set_instructions_per_frame(uint32_t count) noexcept -> void {
     ipf = std::clamp(count, min_instructions_per_frame, max_instructions_per_frame);
+}
+
+
+auto Chip8::save_state() const -> SaveState {
+    return SaveState{
+        .variant = machine_variant,
+        .quirks  = quirk_set,
+        .instructions_per_frame = ipf,
+        .origin  = origin,
+        .program = image,
+        .state   = machine,
+    };
+}
+
+
+auto Chip8::load_state(SaveState save) -> std::expected<void, std::string> {
+    const auto& state = save.state;
+    const auto variant = save.variant;
+    const auto error = [](std::string message) { return std::unexpected(std::move(message)); };
+
+    if (save.program.empty()) {
+        return error("The save state has no program");
+    }
+    if (save.program.size() > max_program_size(variant, save.origin)) {
+        return error(std::format("The program of the save state does not fit in {} memory", to_string(variant)));
+    }
+    if (state.memory.size() != memory_size(variant)) {
+        return error(std::format("The memory size {} does not match {}", state.memory.size(), to_string(variant)));
+    }
+    if (state.pc >= state.memory.size()) {
+        return error(std::format("The PC 0x{:04X} is outside the {} memory", state.pc, to_string(variant)));
+    }
+    if (state.sp > MachineState::stack_depth) {
+        return error(std::format("The stack depth {} is more than {}", state.sp, MachineState::stack_depth));
+    }
+    if (state.rng == 0) {
+        return error("The random number state is 0");
+    }
+    if ((save.instructions_per_frame < min_instructions_per_frame) || (save.instructions_per_frame > max_instructions_per_frame)) {
+        return error(std::format("The speed of {} instructions per frame is not valid", save.instructions_per_frame));
+    }
+
+    // Each variant has its own display sizes
+    const auto width = state.display.width();
+    const auto height = state.display.height();
+    const bool lores = (width == 64) && (height == 32);
+    const bool display_fits = [&] {
+        switch (variant) {
+            case Variant::chip8:       return lores;
+            case Variant::chip8_hires: return (width == 64) && (height == 64);
+            case Variant::schip:
+            case Variant::xochip:      return lores || ((width == 128) && (height == 64));
+        }
+        return false;
+    }();
+    if (!display_fits) {
+        return error(std::format("The display size {}x{} does not match {}", width, height, to_string(variant)));
+    }
+
+    // The keys are physical, so the held keys stay
+    const auto held_keys = machine.keys;
+
+    machine_variant = variant;
+    quirk_set = save.quirks;
+    ipf = save.instructions_per_frame;
+    origin = save.origin;
+    image = std::move(save.program);
+    machine = std::move(save.state);
+    machine.keys = held_keys;
+
+    return {};
 }
 
 

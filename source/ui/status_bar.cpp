@@ -29,6 +29,11 @@ auto draw_run_state(const UiContext& context) -> void {
         return;
     }
 
+    if (context.rewinding) {
+        ImGui::TextColored(stepping_color, "Rewinding");
+        return;
+    }
+
     if (debugger.is_stepping()) {
         ImGui::TextColored(stepping_color, "Stepping");
         return;

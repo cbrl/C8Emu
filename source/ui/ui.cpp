@@ -1,6 +1,7 @@
 #include "ui.h"
 
 #include "app/source_document.h"
+#include "frontend/settings.h"
 #include "ui/dock_layout.h"
 #include "ui/main_menu.h"
 #include "ui/panels/breakpoints_panel.h"
@@ -18,7 +19,9 @@
 #include "ui/panels/watch_panel.h"
 #include "ui/status_bar.h"
 
+#include <algorithm>
 #include <optional>
+#include <string>
 
 #include <imgui_internal.h>
 
@@ -30,7 +33,8 @@ namespace {
 auto prompt_reason(Command command) -> const char* {
     switch (command) {
         case Command::quit:        return "Save the changes before you exit?";
-        case Command::open_rom:    return "A new ROM replaces the text with its disassembly. Save the changes first?";
+        case Command::open_rom:
+        case Command::open_rom_file: return "A new ROM replaces the text with its disassembly. Save the changes first?";
         case Command::disassemble: return "The disassembly replaces the text. Save the changes first?";
         default:                   return "The command replaces the text. Save the changes first?";
     }
@@ -108,6 +112,8 @@ Ui::Ui() {
 
 
 auto Ui::draw(UiContext& context) -> void {
+    sync_open_panels(context.settings);
+
     const auto actions = draw_main_menu(context, panels);
     if (actions.reset_layout) {
         reset_layout = true;
@@ -137,6 +143,30 @@ auto Ui::draw(UiContext& context) -> void {
     }
 
     draw_unsaved_prompt(context);
+}
+
+
+auto Ui::sync_open_panels(Settings& settings) -> void {
+    auto& closed = settings.closed_panels;
+
+    // The first frame opens the panels of the last session
+    if (!panels_restored) {
+        panels_restored = true;
+        for (auto& panel : panels) {
+            panel->open = std::ranges::find(closed, panel->title()) == closed.end();
+        }
+        return;
+    }
+
+    auto now_closed = std::vector<std::string>{};
+    for (const auto& panel : panels) {
+        if (!panel->open) {
+            now_closed.emplace_back(panel->title());
+        }
+    }
+    if (now_closed != closed) {
+        closed = std::move(now_closed);
+    }
 }
 
 } // namespace c8

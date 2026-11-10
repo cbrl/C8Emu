@@ -24,6 +24,24 @@ struct CycleResult {
 
 
 /**
+ * @struct SaveState
+ *
+ * @brief A complete copy of a machine: its configuration, its program, and its state
+ *
+ * @details chip8/serialize.h converts a save state to bytes and back.
+ */
+struct SaveState {
+    Variant  variant = Variant::chip8;
+    Quirks   quirks;
+    uint32_t instructions_per_frame = 15;
+    uint16_t origin = MachineState::program_start;
+    std::string name;             ///< The name of the program, for display. Chip8 does not use it.
+    std::vector<uint8_t> program; ///< The bytes that a reset loads at the origin
+    MachineState state;
+};
+
+
+/**
  * @class Chip8
  *
  * @brief A CHIP-8 machine and the program it runs
@@ -229,6 +247,24 @@ public:
     auto state() noexcept -> MachineState& {
         return machine;
     }
+
+    /// A copy of the configuration, the program, and the state. The name is empty.
+    [[nodiscard]]
+    auto save_state() const -> SaveState;
+
+    /**
+     * @brief Restore a save state
+     *
+     * @details The variant, the quirks, the speed, the program, and the state
+     *          change to the values of the save state. The held keys and the
+     *          fixed seed do not change. The memory size, the display size,
+     *          the PC, and the program must fit the variant of the save state.
+     *          On failure, nothing changes.
+     *
+     * @return An error message on failure
+     */
+    [[nodiscard]]
+    auto load_state(SaveState save) -> std::expected<void, std::string>;
 
 private:
     auto end_frame() noexcept -> void;

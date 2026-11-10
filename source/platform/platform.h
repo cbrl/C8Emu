@@ -2,7 +2,9 @@
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <SDL3/SDL.h>
@@ -38,6 +40,8 @@ auto default_keymap() noexcept -> Keymap;
  * @details The constructor throws std::runtime_error if the window or the
  *          context cannot be created. Audio is optional: if the audio
  *          subsystem fails, the platform logs a warning and continues.
+ *
+ *          ImGui keeps the window layout (imgui.ini) in the user data folder.
  */
 class Platform {
 public:
@@ -72,6 +76,18 @@ public:
     [[nodiscard]]
     auto window() const noexcept -> SDL_Window* {
         return sdl_window.get();
+    }
+
+    /**
+     * @brief The folder for the settings, the save states, and the screenshots
+     *
+     * @details The folder is the SDL preference path of C8Emu (for example
+     *          %APPDATA%\cbrl\C8Emu on Windows). If SDL cannot give it, the
+     *          folder is the current folder.
+     */
+    [[nodiscard]]
+    auto user_data_folder() const noexcept -> const std::filesystem::path& {
+        return data_folder;
     }
 
 private:
@@ -115,8 +131,11 @@ private:
     // Scale the ImGui style and fonts to the display scale of the window
     auto apply_ui_scale() -> void;
 
-    // The members are destroyed in reverse order: ImGui, then the context, the window, and SDL
+    // The members are destroyed in reverse order: ImGui, then the context, the window, and SDL.
+    // ImGui writes the layout file when it stops, so the name of the file must outlive ImGui.
     SdlLibrary sdl;
+    std::filesystem::path data_folder;
+    std::string layout_file;
     WindowPtr  sdl_window;
     ContextPtr gl_context;
     ImGuiLayer imgui;

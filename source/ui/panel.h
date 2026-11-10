@@ -1,6 +1,8 @@
 #pragma once
 
+#include <filesystem>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include <imgui.h>
@@ -20,7 +22,19 @@ struct Settings;
 struct UiRequests {
     std::vector<Command> commands; ///< Oldest first
 
+    /// The file of Command::open_rom_file and Command::open_source_file
+    std::filesystem::path file;
+
+    /// The user changed the memory, the registers, or the seed. The history starts again.
+    bool state_edited = false;
+
     auto push(Command command) -> void {
+        commands.push_back(command);
+    }
+
+    /// Request a command that opens a file
+    auto open(Command command, std::filesystem::path path) -> void {
+        file = std::move(path);
         commands.push_back(command);
     }
 };
@@ -33,8 +47,10 @@ struct UiContext {
     SourceDocument&               document;
     Settings&                     settings;
     const EmulationRate&          rate;
+    const std::filesystem::path&  user_data;      ///< The folder of the settings, the save states, and the screenshots
     ImTextureID                   display_texture;
     bool                          turbo_active;   ///< The turbo key is held
+    bool                          rewinding;      ///< The rewind key is held, and the history plays backward
     const std::optional<Command>& unsaved_prompt; ///< A command that waits for an answer about unsaved source changes
     UiRequests&                   requests;
 };

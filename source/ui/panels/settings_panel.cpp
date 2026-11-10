@@ -125,6 +125,33 @@ auto draw_run_control(UiContext& context) -> void {
     command_button(context, "Step Over", Command::step_over);
     ImGui::SameLine();
     command_button(context, "Step Out", Command::step_out);
+
+    command_button(context, "Step Back", Command::step_back);
+    ImGui::SameLine();
+    command_button(context, "Frame Back", Command::frame_back);
+}
+
+
+auto draw_history(UiContext& context) -> void {
+    auto& settings = context.settings;
+
+    ImGui::Checkbox("Record History", &settings.history_enabled);
+    ImGui::SetItemTooltip("Record the state at each frame end for Step Back (F7), Frame Back (Shift+F6),\n"
+                          "and Rewind (hold Backspace)");
+
+    ImGui::BeginDisabled(!settings.history_enabled);
+    static constexpr auto min_seconds = static_cast<int>(Settings::min_history_seconds);
+    static constexpr auto max_seconds = static_cast<int>(Settings::max_history_seconds);
+
+    int seconds = static_cast<int>(settings.history_seconds);
+    if (ImGui::SliderInt("Length", &seconds, min_seconds, max_seconds, "%d s", ImGuiSliderFlags_AlwaysClamp)) {
+        settings.history_seconds = static_cast<uint32_t>(seconds);
+    }
+    ImGui::SetItemTooltip("The oldest frames leave a full history");
+
+    const auto& history = context.debugger.history();
+    ImGui::TextDisabled("%zu frames, %zu KiB", history.size(), history.memory_use() / 1024);
+    ImGui::EndDisabled();
 }
 
 
@@ -174,6 +201,9 @@ auto SettingsPanel::draw(UiContext& context) -> void {
         section("Emulation");
         draw_emulation(context);
 
+        section("History");
+        draw_history(context);
+
         section("Display");
         draw_display(context.settings, context.chip.variant());
 
@@ -216,8 +246,10 @@ auto SettingsPanel::draw_rng_seed(UiContext& context) -> void {
         seed = *chip.get_seed();
     }
 
+    // A new seed changes the random state now, so the history starts again
     if (ImGui::Checkbox("Fixed RNG seed", &fixed)) {
         chip.set_seed(fixed ? std::optional<uint32_t>{seed} : std::nullopt);
+        context.requests.state_edited = true;
     }
     ImGui::SetItemTooltip("CXNN gives the same random numbers after each reset");
 
@@ -226,6 +258,7 @@ auto SettingsPanel::draw_rng_seed(UiContext& context) -> void {
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.0f);
         if (ImGui::InputScalar("##seed", ImGuiDataType_U32, &seed, nullptr, nullptr, "%08X", ImGuiInputTextFlags_EnterReturnsTrue)) {
             chip.set_seed(seed);
+            context.requests.state_edited = true;
         }
         ImGui::SetItemTooltip("The seed (hex). Press Enter to use it.");
     }

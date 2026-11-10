@@ -22,6 +22,18 @@ enum class Command : uint8_t {
     frame_advance,
     toggle_breakpoint, ///< Toggle the breakpoint of the cursor line in the code editor
     run_to_cursor,     ///< Run until the PC reaches the cursor line in the code editor
+    step_back,         ///< Go back one instruction (history)
+    frame_back,        ///< Go back to the previous frame end (history)
+
+    // Save states
+    quick_save,        ///< Save the state to the selected slot of the program
+    quick_load,        ///< Load the state from the selected slot of the program
+    save_state_as,
+    load_state,
+
+    // Files that the UI names in UiRequests::file, for example a recent file
+    open_rom_file,
+    open_source_file,
 
     // The assembly source in the code editor
     new_source,
@@ -71,6 +83,16 @@ auto is_enabled(Command command, const Debugger& debugger) noexcept -> bool;
  *          ImGui::Render().
  */
 auto poll_shortcuts(std::vector<Command>& commands) -> void;
+
+/**
+ * @brief True while the rewind key (Backspace) is held
+ *
+ * @details Rewind is off while a text field or the code editor uses the
+ *          keyboard. Call once in each frame, between ImGui::NewFrame() and
+ *          ImGui::Render().
+ */
+[[nodiscard]]
+auto poll_rewind() -> bool;
 
 /**
  * @brief True while the turbo key (Tab) is held

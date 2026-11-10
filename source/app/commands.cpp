@@ -20,6 +20,10 @@ struct Binding {
 constexpr auto bindings = std::array{
     Binding{Command::run_pause,         ImGuiKey_F5,                                 ImGuiInputFlags_None},
     Binding{Command::frame_advance,     ImGuiKey_F6,                                 ImGuiInputFlags_Repeat},
+    Binding{Command::frame_back,        ImGuiMod_Shift | ImGuiKey_F6,                ImGuiInputFlags_Repeat},
+    Binding{Command::step_back,         ImGuiKey_F7,                                 ImGuiInputFlags_Repeat},
+    Binding{Command::quick_save,        ImGuiKey_F2,                                 ImGuiInputFlags_None},
+    Binding{Command::quick_load,        ImGuiKey_F4,                                 ImGuiInputFlags_None},
     Binding{Command::step_over,         ImGuiKey_F10,                                ImGuiInputFlags_Repeat},
     Binding{Command::step_into,         ImGuiKey_F11,                                ImGuiInputFlags_Repeat},
     Binding{Command::step_out,          ImGuiMod_Shift | ImGuiKey_F11,               ImGuiInputFlags_None},
@@ -32,6 +36,7 @@ constexpr auto bindings = std::array{
 };
 
 constexpr auto turbo_key = ImGuiKey_Tab;
+constexpr auto rewind_key = ImGuiKey_Backspace;
 
 } // namespace
 
@@ -39,6 +44,8 @@ constexpr auto turbo_key = ImGuiKey_Tab;
 auto discards_source(Command command) noexcept -> bool {
     switch (command) {
         case Command::open_rom:    // The editor then shows the disassembly of the ROM
+        case Command::open_rom_file:
+        case Command::open_source_file:
         case Command::quit:
         case Command::new_source:
         case Command::open_source:
@@ -83,6 +90,9 @@ auto is_enabled(Command command, const Debugger& debugger) noexcept -> bool {
         case Command::assemble_and_load:
         case Command::check_source:
         case Command::toggle_breakpoint:
+        case Command::load_state:
+        case Command::open_rom_file:
+        case Command::open_source_file:
         case Command::prompt_save:
         case Command::prompt_discard:
         case Command::prompt_cancel: {
@@ -92,7 +102,12 @@ auto is_enabled(Command command, const Debugger& debugger) noexcept -> bool {
         case Command::run_pause:
         case Command::frame_advance:
         case Command::run_to_cursor:
-        case Command::disassemble: {
+        case Command::disassemble:
+        case Command::step_back:
+        case Command::frame_back:
+        case Command::quick_save:
+        case Command::quick_load:
+        case Command::save_state_as: {
             return has_program;
         }
         case Command::step_into:
@@ -112,6 +127,15 @@ auto poll_shortcuts(std::vector<Command>& commands) -> void {
             commands.push_back(binding.command);
         }
     }
+}
+
+
+auto poll_rewind() -> bool {
+    // A text field or the code editor uses Backspace
+    if (ImGui::GetIO().WantCaptureKeyboard) {
+        return false;
+    }
+    return ImGui::IsKeyDown(rewind_key);
 }
 
 

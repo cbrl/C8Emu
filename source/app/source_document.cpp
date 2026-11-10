@@ -53,12 +53,7 @@ auto SourceDocument::replace(std::string_view new_text, std::filesystem::path so
     saved_text = text_editor.GetText();
     dirty = false;
 
-    tracker.clear();
-    loaded_labels.clear();
-    loaded_symbols.clear();
-    ++labels_version;
-    markers_valid = false;
-
+    forget_program();
     (void)check();
 }
 
@@ -105,6 +100,15 @@ auto SourceDocument::mark_loaded() -> void {
         }
     }
     ++labels_version;
+}
+
+
+auto SourceDocument::forget_program() -> void {
+    tracker.clear();
+    loaded_labels.clear();
+    loaded_symbols.clear();
+    ++labels_version;
+    markers_valid = false;
 }
 
 

@@ -50,7 +50,24 @@ auto read_rom_file(const std::filesystem::path& file, size_t max_size) -> std::e
  * @return The text, or an error message
  */
 [[nodiscard]]
-auto read_text_file(const std::filesystem::path& file, size_t max_size) -> std::expected<std::string, std::string>;
+auto read_text_file(const std::filesystem::path& file) -> std::expected<std::string, std::string>;
+
+/// The extension of a save state file
+inline constexpr std::string_view state_file_extension = ".c8state";
+
+/// The folder of the save states in the user data folder
+[[nodiscard]]
+auto state_folder(const std::filesystem::path& user_data) -> std::filesystem::path;
+
+/**
+ * @brief The quick save file of a program and a slot
+ *
+ * @details The name is "<program>.<slot>.c8state", where <program> is the
+ *          program name without its extension. A save state holds its
+ *          program, so the name needs no checksum.
+ */
+[[nodiscard]]
+auto state_slot_file(const std::filesystem::path& folder, std::string_view program_name, uint32_t slot) -> std::filesystem::path;
 
 /// Write bytes to a file. An existing file is replaced. Returns an error message on failure.
 [[nodiscard]]
