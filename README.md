@@ -1,6 +1,17 @@
 # C8Emu
 
-A CHIP-8 emulator
+A CHIP-8 emulator with an assembler and a debugger
+
+## Features
+
+- Platforms: CHIP-8 (COSMAC VIP), Hires CHIP-8, SUPER-CHIP, and XO-CHIP. Open
+  ROM selects the platform from the file extension or from the program.
+- A code editor with an assembler, a disassembler, syntax colors, help on
+  hover, and autocomplete
+- Source-level debugging: breakpoints with conditions, logpoints, watchpoints,
+  a trace, and a profiler
+- Step back, frame back, and rewind, from a history of the last frames
+- Save states
 
 ## Requirements
 

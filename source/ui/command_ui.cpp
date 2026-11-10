@@ -6,12 +6,27 @@
 
 namespace c8 {
 
-auto command_menu_item(UiContext& context, const char* label, Command command) -> void {
+namespace {
+
+// The label, or the name of the command
+auto label_of(Command command, const char* label) -> std::string {
+    return (label != nullptr) ? std::string{label} : std::string{command_info(command).name};
+}
+
+} // namespace
+
+
+auto command_menu_item(UiContext& context, Command command, const char* label) -> void {
+    const auto& info = command_info(command);
     const auto keys = shortcut_text(command);
     const bool enabled = is_enabled(command, context.debugger);
 
-    if (ImGui::MenuItem(label, keys.empty() ? nullptr : keys.c_str(), false, enabled)) {
+    if (ImGui::MenuItem(label_of(command, label).c_str(), keys.empty() ? nullptr : keys.c_str(), false, enabled)) {
         context.requests.push(command);
+    }
+
+    if (!info.description.empty()) {
+        ImGui::SetItemTooltip("%.*s", static_cast<int>(info.description.size()), info.description.data());
     }
 }
 
@@ -42,15 +57,22 @@ auto disassemble_menu(UiContext& context, const char* label) -> void {
 }
 
 
-auto command_button(UiContext& context, const char* label, Command command) -> void {
+auto command_button(UiContext& context, Command command, const char* label) -> void {
+    const auto& info = command_info(command);
+
     ImGui::BeginDisabled(!is_enabled(command, context.debugger));
 
-    if (ImGui::Button(label)) {
+    if (ImGui::Button(label_of(command, label).c_str())) {
         context.requests.push(command);
     }
 
-    if (const auto keys = shortcut_text(command); !keys.empty()) {
-        ImGui::SetItemTooltip("%s", keys.c_str());
+    const auto keys = shortcut_text(command);
+    auto tooltip = std::string{info.description};
+    if (!keys.empty()) {
+        tooltip += tooltip.empty() ? keys : " (" + keys + ")";
+    }
+    if (!tooltip.empty()) {
+        ImGui::SetItemTooltip("%s", tooltip.c_str());
     }
 
     ImGui::EndDisabled();

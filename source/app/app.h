@@ -47,6 +47,15 @@ private:
     // Apply the CHIP-8 key changes of one host frame
     auto apply_input(const PlatformEvents& events) -> void;
 
+    // Set the keys that the mouse holds on the Keypad panel
+    auto set_keypad_keys(uint16_t keys) -> void;
+
+    // Give the debugger the keys that the keyboard or the Keypad panel holds
+    auto update_keys() -> void;
+
+    // Open a file that the user dropped onto the window: a source, a save state, or a ROM
+    auto open_dropped_file(const std::filesystem::path& file) -> void;
+
     // Send the XO-CHIP audio pattern and pitch to the beeper when they change
     auto update_audio_pattern() -> void;
 
@@ -138,6 +147,11 @@ private:
     Settings settings;
     Keymap keymap = default_keymap();
 
+    // The CHIP-8 keys that the keyboard holds, and the keys that the mouse holds on the Keypad panel.
+    // The machine sees both. Bit n is key n.
+    uint16_t keyboard_keys = 0;
+    uint16_t keypad_keys = 0;
+
     Chip8 chip;
     Debugger debugger{chip};
     Session session{chip, debugger};
@@ -177,6 +191,9 @@ private:
 
     // The file of a request to open a file. It waits with the command for an answer about unsaved changes.
     std::filesystem::path pending_file;
+
+    // The keyboard key of each CHIP-8 key, for the UI
+    std::array<std::string, 16> keymap_names;
 
     // The XO-CHIP sound that the beeper plays
     AudioPattern audio_pattern;

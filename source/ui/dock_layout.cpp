@@ -23,11 +23,13 @@ auto build_default_layout(ImGuiID dockspace_id) -> void {
     auto center_top    = ImGui::DockBuilderSplitNode(center, ImGuiDir_Up, 0.4f, nullptr, &center_bottom);
 
     ImGui::DockBuilderDockWindow("Chip8 Settings", left_top);
+    ImGui::DockBuilderDockWindow("Keypad", left_top);
     ImGui::DockBuilderDockWindow("Registers", registers);
     ImGui::DockBuilderDockWindow("Stack", stack);
     ImGui::DockBuilderDockWindow("Watch", stack);
     ImGui::DockBuilderDockWindow("Display", center_top);
     ImGui::DockBuilderDockWindow("Memory", center_bottom);
+    ImGui::DockBuilderDockWindow("Sprites", center_bottom);
     ImGui::DockBuilderDockWindow("Log", center_bottom);
     ImGui::DockBuilderDockWindow("Trace", center_bottom);
     ImGui::DockBuilderDockWindow("Profiler", center_bottom);

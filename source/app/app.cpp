@@ -54,6 +54,12 @@ auto recent_entry(const std::filesystem::path& file) -> std::string {
     return path_to_utf8(ec ? file : absolute);
 }
 
+// True for a command that opens the file of UiRequests::file
+auto opens_named_file(Command command) -> bool {
+    return (command == Command::open_rom_file) || (command == Command::open_source_file) || (command == Command::open_state_file);
+}
+
+
 // Remove a file that does not exist now from a list of recent files
 auto forget_missing(std::vector<std::string>& list, const std::filesystem::path& file) -> void {
     auto ec = std::error_code{};
@@ -88,6 +94,8 @@ App::App() {
     (void)debugger.apply_preset(machine);
     debugger.set_break_on_leave_program(settings.break_on_leave_program);
     sync_settings();
+
+    keymap_names = key_names(keymap);
 }
 
 
@@ -101,6 +109,13 @@ auto App::run() -> void {
             execute(Command::quit);
         }
         apply_input(events);
+
+        if (events.keymap_changed) {
+            keymap_names = key_names(keymap);
+        }
+        if (events.dropped_file) {
+            open_dropped_file(*events.dropped_file);
+        }
 
         emulate(timer.delta_time().count());
         log_stop_events();
@@ -133,6 +148,7 @@ auto App::run() -> void {
             .settings        = settings,
             .rate            = rate_meter.rate(),
             .user_data       = platform.user_data_folder(),
+            .key_names       = keymap_names,
             .display_texture = static_cast<ImTextureID>(display_texture.id()),
             .turbo_active    = turbo,
             .rewinding       = rewinding,
@@ -143,13 +159,15 @@ auto App::run() -> void {
         ui.draw(context);
         platform.end_frame();
 
+        set_keypad_keys(requests.keypad_keys);
+
         // A replay from the history would not give the edited values
         if (requests.state_edited) {
             debugger.state_edited();
         }
 
         for (const auto command : requests.commands) {
-            if ((command == Command::open_rom_file) || (command == Command::open_source_file)) {
+            if (opens_named_file(command)) {
                 pending_file = requests.file;
             }
             execute(command);
@@ -167,15 +185,54 @@ auto App::run() -> void {
 
 
 auto App::apply_input(const PlatformEvents& events) -> void {
-    // The debugger notes each change, so a replay of the history presses the same keys
+    // The window does not see the key releases while it has no focus
     if (events.release_all_keys) {
-        for (uint8_t key = 0; key < 16; ++key) {
-            debugger.set_key(key, false);
-        }
+        keyboard_keys = 0;
+        keypad_keys = 0;
+        update_keys();
     }
 
     for (const auto& event : events.keys) {
-        debugger.set_key(event.key, event.down);
+        const auto bit = static_cast<uint16_t>(1u << event.key);
+        keyboard_keys = static_cast<uint16_t>(event.down ? (keyboard_keys | bit) : (keyboard_keys & ~bit));
+        update_keys();
+    }
+}
+
+
+auto App::set_keypad_keys(uint16_t keys) -> void {
+    if (keys != keypad_keys) {
+        keypad_keys = keys;
+        update_keys();
+    }
+}
+
+
+auto App::update_keys() -> void {
+    const auto keys = static_cast<uint16_t>(keyboard_keys | keypad_keys);
+    const uint16_t held = chip.state().keys;
+
+    // The debugger notes each change, so a replay of the history presses the same keys
+    for (uint8_t key = 0; key < 16; ++key) {
+        const auto bit = static_cast<uint16_t>(1u << key);
+        if ((keys & bit) != (held & bit)) {
+            debugger.set_key(key, (keys & bit) != 0);
+        }
+    }
+}
+
+
+auto App::open_dropped_file(const std::filesystem::path& file) -> void {
+    pending_file = file;
+
+    if (is_source_file(file)) {
+        execute(Command::open_source_file);
+    }
+    else if (is_state_file(file)) {
+        execute(Command::open_state_file);
+    }
+    else {
+        execute(Command::open_rom_file);
     }
 }
 
@@ -743,6 +800,10 @@ auto App::perform(Command command) -> void {
         }
         case Command::load_state: {
             load_state_dialog();
+            break;
+        }
+        case Command::open_state_file: {
+            load_state_from(pending_file);
             break;
         }
         case Command::toggle_breakpoint: {

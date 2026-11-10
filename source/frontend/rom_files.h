@@ -31,6 +31,14 @@ auto path_from_utf8(std::string_view text) -> std::filesystem::path;
 [[nodiscard]]
 auto platform_from_extension(const std::filesystem::path& file) -> std::optional<Variant>;
 
+/// True for the extension of an assembly source: `.c8s`, `.asm`, `.s`, or `.txt`
+[[nodiscard]]
+auto is_source_file(const std::filesystem::path& file) -> bool;
+
+/// True for the extension of a save state file (state_file_extension)
+[[nodiscard]]
+auto is_state_file(const std::filesystem::path& file) -> bool;
+
 /**
  * @brief Read a ROM file into memory
  *

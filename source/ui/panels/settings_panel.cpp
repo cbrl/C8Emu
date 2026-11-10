@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <format>
 #include <optional>
 #include <span>
 #include <string>
@@ -109,26 +110,26 @@ auto draw_speed(Chip8& chip, Settings& settings) -> void {
     if (ImGui::SliderInt("Turbo speed", &turbo, min_turbo, max_turbo, "x%d", ImGuiSliderFlags_AlwaysClamp)) {
         settings.turbo_factor = static_cast<uint32_t>(turbo);
     }
-    ImGui::SetItemTooltip("Hold Tab to run this many times faster");
+    ImGui::SetItemTooltip("Hold %s to run this many times faster", ImGui::GetKeyName(turbo_key));
 }
 
 
 auto draw_run_control(UiContext& context) -> void {
-    command_button(context, "Reset", Command::reset);
+    command_button(context, Command::reset);
     ImGui::SameLine();
-    command_button(context, context.debugger.is_running() ? "Pause" : "Run", Command::run_pause);
+    command_button(context, Command::run_pause, context.debugger.is_running() ? "Pause" : "Run");
     ImGui::SameLine();
-    command_button(context, "Frame Advance", Command::frame_advance);
+    command_button(context, Command::frame_advance);
 
-    command_button(context, "Step Into", Command::step_into);
+    command_button(context, Command::step_into);
     ImGui::SameLine();
-    command_button(context, "Step Over", Command::step_over);
+    command_button(context, Command::step_over);
     ImGui::SameLine();
-    command_button(context, "Step Out", Command::step_out);
+    command_button(context, Command::step_out);
 
-    command_button(context, "Step Back", Command::step_back);
+    command_button(context, Command::step_back);
     ImGui::SameLine();
-    command_button(context, "Frame Back", Command::frame_back);
+    command_button(context, Command::frame_back);
 }
 
 
@@ -136,8 +137,10 @@ auto draw_history(UiContext& context) -> void {
     auto& settings = context.settings;
 
     ImGui::Checkbox("Record History", &settings.history_enabled);
-    ImGui::SetItemTooltip("Record the state at each frame end for Step Back (F7), Frame Back (Shift+F6),\n"
-                          "and Rewind (hold Backspace)");
+    const auto tooltip = std::format("Record the state at each frame end for Step Back ({}), Frame Back ({}),\n"
+                                     "and Rewind (hold {})",
+        shortcut_text(Command::step_back), shortcut_text(Command::frame_back), ImGui::GetKeyName(rewind_key));
+    ImGui::SetItemTooltip("%s", tooltip.c_str());
 
     ImGui::BeginDisabled(!settings.history_enabled);
     static constexpr auto min_seconds = static_cast<int>(Settings::min_history_seconds);

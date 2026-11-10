@@ -22,6 +22,13 @@ namespace {
 constexpr int default_window_width  = 1600;
 constexpr int default_window_height = 1200;
 
+constexpr auto rgb(int r, int g, int b, float a = 1.0f) -> ImVec4 {
+    return {static_cast<float>(r) / 255.0f, static_cast<float>(g) / 255.0f, static_cast<float>(b) / 255.0f, a};
+}
+
+// The color behind the dock space, the title bars, and the menu bar. The window clears to it.
+constexpr auto theme_background = rgb(24, 25, 30);
+
 // SDL writes its own messages here before the log hook replaces it
 SDL_LogOutputFunction default_log_output = nullptr;
 
@@ -64,6 +71,70 @@ auto find_user_data_folder() -> std::filesystem::path {
     auto path = path_from_utf8(folder);
     SDL_free(folder);
     return path.has_filename() ? path : path.parent_path();
+}
+
+
+// A dark theme with a blue accent and rounded corners
+auto apply_theme(ImGuiStyle& style) -> void {
+    ImGui::StyleColorsDark(&style);
+
+    style.WindowRounding    = 6.0f;
+    style.ChildRounding     = 4.0f;
+    style.FrameRounding     = 4.0f;
+    style.PopupRounding     = 4.0f;
+    style.ScrollbarRounding = 6.0f;
+    style.GrabRounding      = 4.0f;
+    style.TabRounding       = 4.0f;
+    style.WindowPadding     = {8.0f, 8.0f};
+    style.FramePadding      = {6.0f, 4.0f};
+    style.ItemSpacing       = {8.0f, 5.0f};
+    style.WindowBorderSize  = 1.0f;
+    style.TabBarBorderSize  = 1.0f;
+
+    constexpr auto background = theme_background;
+    constexpr auto panel      = rgb(30, 31, 38);
+    constexpr auto frame      = rgb(42, 44, 54);
+    constexpr auto hover      = rgb(54, 57, 70);
+    constexpr auto accent     = rgb(76, 141, 255);
+    constexpr auto accent_dim = rgb(52, 98, 180);
+
+    auto& c = style.Colors;
+    c[ImGuiCol_Text]                = rgb(228, 230, 236);
+    c[ImGuiCol_TextDisabled]        = rgb(128, 132, 146);
+    c[ImGuiCol_WindowBg]            = panel;
+    c[ImGuiCol_ChildBg]             = rgb(0, 0, 0, 0.0f);
+    c[ImGuiCol_PopupBg]             = rgb(34, 35, 43, 0.98f);
+    c[ImGuiCol_Border]              = rgb(52, 54, 64);
+    c[ImGuiCol_FrameBg]             = frame;
+    c[ImGuiCol_FrameBgHovered]      = hover;
+    c[ImGuiCol_FrameBgActive]       = rgb(62, 66, 82);
+    c[ImGuiCol_TitleBg]             = background;
+    c[ImGuiCol_TitleBgActive]       = background;
+    c[ImGuiCol_MenuBarBg]           = background;
+    c[ImGuiCol_ScrollbarBg]         = rgb(0, 0, 0, 0.0f);
+    c[ImGuiCol_CheckMark]           = accent;
+    c[ImGuiCol_SliderGrab]          = accent_dim;
+    c[ImGuiCol_SliderGrabActive]    = accent;
+    c[ImGuiCol_Button]              = frame;
+    c[ImGuiCol_ButtonHovered]       = hover;
+    c[ImGuiCol_ButtonActive]        = accent_dim;
+    c[ImGuiCol_Header]              = rgb(52, 98, 180, 0.45f);
+    c[ImGuiCol_HeaderHovered]       = rgb(52, 98, 180, 0.65f);
+    c[ImGuiCol_HeaderActive]        = accent_dim;
+    c[ImGuiCol_Separator]           = rgb(52, 54, 64);
+    c[ImGuiCol_Tab]                 = background;
+    c[ImGuiCol_TabHovered]          = hover;
+    c[ImGuiCol_TabSelected]         = panel;
+    c[ImGuiCol_TabSelectedOverline] = accent;
+    c[ImGuiCol_TabDimmed]           = background;
+    c[ImGuiCol_TabDimmedSelected]   = panel;
+    c[ImGuiCol_DockingPreview]      = rgb(76, 141, 255, 0.5f);
+    c[ImGuiCol_DockingEmptyBg]      = background;
+    c[ImGuiCol_PlotHistogram]       = accent;
+    c[ImGuiCol_TableHeaderBg]       = background;
+    c[ImGuiCol_TableRowBgAlt]       = rgb(255, 255, 255, 0.025f);
+    c[ImGuiCol_TextSelectedBg]      = rgb(76, 141, 255, 0.35f);
+    c[ImGuiCol_NavCursor]           = accent;
 }
 
 
@@ -110,6 +181,20 @@ auto default_keymap() noexcept -> Keymap {
     keymap[0xF] = SDL_SCANCODE_V;
 
     return keymap;
+}
+
+
+auto key_names(const Keymap& keymap) -> std::array<std::string, 16> {
+    auto names = std::array<std::string, 16>{};
+    for (size_t key = 0; key < keymap.size(); ++key) {
+        // The key name follows the keyboard layout. A key without a name keeps the name of its position.
+        const char* name = SDL_GetKeyName(SDL_GetKeyFromScancode(keymap[key], SDL_KMOD_NONE, false));
+        if ((name == nullptr) || (*name == '\0')) {
+            name = SDL_GetScancodeName(keymap[key]);
+        }
+        names[key] = (name != nullptr) ? name : "";
+    }
+    return names;
 }
 
 
@@ -230,7 +315,7 @@ auto Platform::create_window() -> WindowPtr {
     }
 
     auto window = WindowPtr{SDL_CreateWindow(
-        "CHIP-8",
+        "C8Emu",
         width,
         height,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY
@@ -273,7 +358,7 @@ auto Platform::apply_ui_scale() -> void {
 
     // ScaleAllSizes() multiplies the current sizes, so start from a new style each time
     auto style = ImGuiStyle{};
-    ImGui::StyleColorsDark(&style);
+    apply_theme(style);
     style.ScaleAllSizes(scale);
     style.FontScaleDpi = scale;
     ImGui::GetStyle() = style;
@@ -304,6 +389,25 @@ auto Platform::poll_events(const Keymap& keymap) -> PlatformEvents {
 
             case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED: {
                 apply_ui_scale();
+                break;
+            }
+
+            case SDL_EVENT_KEYMAP_CHANGED: {
+                events.keymap_changed = true;
+                break;
+            }
+
+            case SDL_EVENT_DROP_BEGIN:
+            case SDL_EVENT_DROP_COMPLETE: {
+                drop_file_taken = false;
+                break;
+            }
+
+            case SDL_EVENT_DROP_FILE: {
+                if (!drop_file_taken && (event.drop.data != nullptr)) {
+                    events.dropped_file = path_from_utf8(event.drop.data);
+                    drop_file_taken = true;
+                }
                 break;
             }
 
@@ -352,7 +456,7 @@ auto Platform::end_frame() -> void {
     SDL_GetWindowSizeInPixels(sdl_window.get(), &width, &height);
     glViewport(0, 0, width, height);
 
-    glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
+    glClearColor(theme_background.x, theme_background.y, theme_background.z, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

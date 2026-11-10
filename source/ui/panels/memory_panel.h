@@ -36,6 +36,9 @@ public:
 
     auto draw(UiContext& context) -> void override;
 
+    /// Open the panel, bring it to the front, and scroll to an address in the next frame
+    auto show(size_t address) -> void;
+
 private:
     // What the background colors show in this frame, and the edits of the frame
     struct EditorData {
@@ -52,12 +55,13 @@ private:
     // MemoryEditor::WriteFn. user_data points to an EditorData.
     static auto write_byte(ImU8* memory, size_t address, ImU8 value, void* user_data) -> void;
 
-    // Scroll to an address
+    // Scroll to an address. The byte is not selected for editing.
     auto go_to(size_t address) -> void;
 
     MemoryEditor editor;
     EditorData data;
     bool jumped = false;
+    bool focus = false; // Bring the panel to the front in the next frame
 };
 
 } // namespace c8

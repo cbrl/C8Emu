@@ -1,7 +1,10 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -22,11 +25,18 @@ struct Settings;
 struct UiRequests {
     std::vector<Command> commands; ///< Oldest first
 
-    /// The file of Command::open_rom_file and Command::open_source_file
+    /// The file of Command::open_rom_file, Command::open_source_file, and Command::open_state_file
     std::filesystem::path file;
 
     /// The user changed the memory, the registers, or the seed. The history starts again.
     bool state_edited = false;
+
+    /// The CHIP-8 keys that the mouse holds on the Keypad panel (bit n is key n).
+    /// A panel that is closed or hidden holds no keys.
+    uint16_t keypad_keys = 0;
+
+    /// Show this address in the Memory panel. The UI does this itself at the end of the frame.
+    std::optional<uint32_t> show_memory;
 
     auto push(Command command) -> void {
         commands.push_back(command);
@@ -41,18 +51,19 @@ struct UiRequests {
 
 /// What the panels can see and change
 struct UiContext {
-    Chip8&                        chip;
-    Debugger&                     debugger;
-    Session&                      session;
-    SourceDocument&               document;
-    Settings&                     settings;
-    const EmulationRate&          rate;
-    const std::filesystem::path&  user_data;      ///< The folder of the settings, the save states, and the screenshots
-    ImTextureID                   display_texture;
-    bool                          turbo_active;   ///< The turbo key is held
-    bool                          rewinding;      ///< The rewind key is held, and the history plays backward
-    const std::optional<Command>& unsaved_prompt; ///< A command that waits for an answer about unsaved source changes
-    UiRequests&                   requests;
+    Chip8&                             chip;
+    Debugger&                          debugger;
+    Session&                           session;
+    SourceDocument&                    document;
+    Settings&                          settings;
+    const EmulationRate&               rate;
+    const std::filesystem::path&       user_data;      ///< The folder of the settings, the save states, and the screenshots
+    const std::array<std::string, 16>& key_names;      ///< The keyboard key of each CHIP-8 key, indexed by key 0x0-0xF
+    ImTextureID                        display_texture;
+    bool                               turbo_active;   ///< The turbo key is held
+    bool                               rewinding;      ///< The rewind key is held, and the history plays backward
+    const std::optional<Command>&      unsaved_prompt; ///< A command that waits for an answer about unsaved source changes
+    UiRequests&                        requests;
 };
 
 

@@ -19,6 +19,13 @@ namespace c8 {
 
 namespace {
 
+// A disabled menu item that names a key to hold, for example "Hold Tab"
+auto held_key_item(const char* label, ImGuiKey key) -> void {
+    const auto keys = std::format("Hold {}", ImGui::GetKeyName(key));
+    ImGui::MenuItem(label, keys.c_str(), false, false);
+}
+
+
 // A submenu with the recent files. An item requests `command` with the file.
 auto recent_menu(UiContext& context, const char* label, std::vector<std::string>& files, Command command) -> void {
     if (!ImGui::BeginMenu(label, !files.empty())) {
@@ -71,27 +78,27 @@ auto draw_file_menu(UiContext& context) -> void {
         return;
     }
 
-    command_menu_item(context, "Open ROM...", Command::open_rom);
+    command_menu_item(context, Command::open_rom);
     recent_menu(context, "Recent ROMs", context.settings.recent_roms, Command::open_rom_file);
 
     ImGui::Separator();
-    command_menu_item(context, "New Source", Command::new_source);
-    command_menu_item(context, "Open Source...", Command::open_source);
+    command_menu_item(context, Command::new_source);
+    command_menu_item(context, Command::open_source);
     recent_menu(context, "Recent Sources", context.settings.recent_sources, Command::open_source_file);
     disassemble_menu(context, "Disassemble Program");
-    command_menu_item(context, "Save Source", Command::save_source);
-    command_menu_item(context, "Save Source As...", Command::save_source_as);
-    command_menu_item(context, "Export ROM...", Command::export_rom);
+    command_menu_item(context, Command::save_source);
+    command_menu_item(context, Command::save_source_as);
+    command_menu_item(context, Command::export_rom);
 
     ImGui::Separator();
-    command_menu_item(context, "Quick Save State", Command::quick_save);
-    command_menu_item(context, "Quick Load State", Command::quick_load);
+    command_menu_item(context, Command::quick_save);
+    command_menu_item(context, Command::quick_load);
     state_slot_menu(context);
-    command_menu_item(context, "Save State As...", Command::save_state_as);
-    command_menu_item(context, "Load State...", Command::load_state);
+    command_menu_item(context, Command::save_state_as);
+    command_menu_item(context, Command::load_state);
 
     ImGui::Separator();
-    command_menu_item(context, "Exit", Command::quit);
+    command_menu_item(context, Command::quit);
 
     ImGui::EndMenu();
 }
@@ -102,34 +109,30 @@ auto draw_debug_menu(UiContext& context) -> void {
         return;
     }
 
-    command_menu_item(context, "Assemble & Load", Command::assemble_and_load);
+    command_menu_item(context, Command::assemble_and_load);
     ImGui::Separator();
-    command_menu_item(context, context.debugger.is_running() ? "Pause" : "Run", Command::run_pause);
-    command_menu_item(context, "Frame Advance", Command::frame_advance);
+    command_menu_item(context, Command::run_pause, context.debugger.is_running() ? "Pause" : "Run");
+    command_menu_item(context, Command::frame_advance);
 
     ImGui::Separator();
-    command_menu_item(context, "Step Into", Command::step_into);
-    command_menu_item(context, "Step Over", Command::step_over);
-    command_menu_item(context, "Step Out", Command::step_out);
-    command_menu_item(context, "Run to Cursor", Command::run_to_cursor);
-    ImGui::SetItemTooltip("Run until the PC reaches the cursor line in the Code Editor");
+    command_menu_item(context, Command::step_into);
+    command_menu_item(context, Command::step_over);
+    command_menu_item(context, Command::step_out);
+    command_menu_item(context, Command::run_to_cursor);
 
     ImGui::Separator();
-    command_menu_item(context, "Step Back", Command::step_back);
-    ImGui::SetItemTooltip("Go back one instruction");
-    command_menu_item(context, "Frame Back", Command::frame_back);
-    ImGui::SetItemTooltip("Go back to the end of the previous frame");
-    ImGui::MenuItem("Rewind", "Hold Backspace", false, false);
+    command_menu_item(context, Command::step_back);
+    command_menu_item(context, Command::frame_back);
+    held_key_item("Rewind", rewind_key);
 
     ImGui::Separator();
-    command_menu_item(context, "Toggle Breakpoint", Command::toggle_breakpoint);
-    ImGui::SetItemTooltip("Toggle the breakpoint of the cursor line in the Code Editor");
+    command_menu_item(context, Command::toggle_breakpoint);
 
     ImGui::Separator();
-    command_menu_item(context, "Reset", Command::reset);
+    command_menu_item(context, Command::reset);
 
     ImGui::Separator();
-    ImGui::MenuItem("Turbo", "Hold Tab", false, false);
+    held_key_item("Turbo", turbo_key);
 
     ImGui::EndMenu();
 }
@@ -180,6 +183,22 @@ auto draw_view_menu(std::span<const std::unique_ptr<Panel>> panels, MainMenuActi
     ImGui::EndMenu();
 }
 
+
+auto draw_help_menu(MainMenuActions& actions) -> void {
+    if (!ImGui::BeginMenu("Help")) {
+        return;
+    }
+
+    if (ImGui::MenuItem("Keyboard Shortcuts")) {
+        actions.show_shortcuts = true;
+    }
+    if (ImGui::MenuItem("About C8Emu")) {
+        actions.show_about = true;
+    }
+
+    ImGui::EndMenu();
+}
+
 } // namespace
 
 
@@ -194,6 +213,7 @@ auto draw_main_menu(UiContext& context, std::span<const std::unique_ptr<Panel>> 
     draw_debug_menu(context);
     draw_options_menu(context);
     draw_view_menu(panels, actions);
+    draw_help_menu(actions);
 
     ImGui::EndMainMenuBar();
     return actions;

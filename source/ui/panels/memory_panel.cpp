@@ -39,6 +39,12 @@ MemoryPanel::MemoryPanel() {
 
 
 auto MemoryPanel::draw(UiContext& context) -> void {
+    // A focused window in a dock node also becomes the selected tab
+    if (focus) {
+        ImGui::SetNextWindowFocus();
+        focus = false;
+    }
+
     if (!ImGui::Begin(title(), &open)) {
         ImGui::End();
         return;
@@ -132,6 +138,13 @@ auto MemoryPanel::background_color(const ImU8* /*memory*/, size_t address, void*
 auto MemoryPanel::write_byte(ImU8* memory, size_t address, ImU8 value, void* user_data) -> void {
     memory[address] = value;
     static_cast<EditorData*>(user_data)->edited = true;
+}
+
+
+auto MemoryPanel::show(size_t address) -> void {
+    open = true;
+    focus = true;
+    go_to(address);
 }
 
 

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,7 +22,11 @@ struct KeyEvent {
 struct PlatformEvents {
     bool quit             = false;
     bool release_all_keys = false; ///< The window lost focus. Release all CHIP-8 keys before the key events.
+    bool keymap_changed   = false; ///< The keyboard layout changed, so the names of the keys can be different
     std::vector<KeyEvent> keys;    ///< CHIP-8 key changes, oldest first
+
+    /// The first file of a drop onto the window. A drop of more files gives only the first.
+    std::optional<std::filesystem::path> dropped_file;
 };
 
 /// The keyboard key (scancode) for each CHIP-8 key, indexed by key 0x0-0xF
@@ -30,6 +35,10 @@ using Keymap = std::array<SDL_Scancode, 16>;
 /// The COSMAC VIP keypad on the left side of the keyboard: 1234/QWER/ASDF/ZXCV
 [[nodiscard]]
 auto default_keymap() noexcept -> Keymap;
+
+/// The name of the keyboard key of each CHIP-8 key in the current keyboard layout. SDL video must be ready.
+[[nodiscard]]
+auto key_names(const Keymap& keymap) -> std::array<std::string, 16>;
 
 
 /**
@@ -141,6 +150,9 @@ private:
     ImGuiLayer imgui;
 
     float ui_scale = 0.0f;
+
+    // A drop of files gave its first file. The later files of the drop are ignored.
+    bool drop_file_taken = false;
 
     // The time of the next frame, for the frame limit (SDL_GetTicksNS)
     Uint64 next_frame_ns = 0;

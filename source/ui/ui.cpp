@@ -7,12 +7,14 @@
 #include "ui/panels/breakpoints_panel.h"
 #include "ui/panels/display_panel.h"
 #include "ui/panels/editor_panel.h"
+#include "ui/panels/keypad_panel.h"
 #include "ui/panels/log_panel.h"
 #include "ui/panels/memory_panel.h"
 #include "ui/panels/profiler_panel.h"
 #include "ui/panels/program_panel.h"
 #include "ui/panels/registers_panel.h"
 #include "ui/panels/settings_panel.h"
+#include "ui/panels/sprite_panel.h"
 #include "ui/panels/stack_panel.h"
 #include "ui/panels/syntax_reference_panel.h"
 #include "ui/panels/trace_panel.h"
@@ -22,8 +24,11 @@
 #include <algorithm>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include <imgui_internal.h>
+
+#include <SDL3/SDL_version.h>
 
 namespace c8 {
 
@@ -90,6 +95,26 @@ auto draw_unsaved_prompt(UiContext& context) -> void {
     ImGui::EndPopup();
 }
 
+
+// A table of names and keys, for the Keyboard Shortcuts window. The key column has the same width in each table.
+auto begin_keys_table(const char* id) -> bool {
+    if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_RowBg)) {
+        return false;
+    }
+    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("Keys", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * 9.0f);
+    return true;
+}
+
+
+auto keys_row(std::string_view name, std::string_view keys) -> void {
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::TextUnformatted(name.data(), name.data() + name.size());
+    ImGui::TableNextColumn();
+    ImGui::TextUnformatted(keys.data(), keys.data() + keys.size());
+}
+
 } // namespace
 
 
@@ -97,6 +122,7 @@ Ui::Ui() {
     // The order of the View menu
     panels.push_back(std::make_unique<SettingsPanel>());
     panels.push_back(std::make_unique<DisplayPanel>());
+    panels.push_back(std::make_unique<KeypadPanel>());
     panels.push_back(std::make_unique<RegistersPanel>());
     panels.push_back(std::make_unique<StackPanel>());
     panels.push_back(std::make_unique<WatchPanel>());
@@ -106,7 +132,12 @@ Ui::Ui() {
     panels.push_back(std::make_unique<ProfilerPanel>());
     panels.push_back(std::make_unique<EditorPanel>());
     panels.push_back(std::make_unique<SyntaxReferencePanel>());
-    panels.push_back(std::make_unique<MemoryPanel>());
+
+    auto memory = std::make_unique<MemoryPanel>();
+    memory_panel = memory.get();
+    panels.push_back(std::move(memory));
+
+    panels.push_back(std::make_unique<SpritePanel>());
     panels.push_back(std::make_unique<LogPanel>());
 }
 
@@ -118,6 +149,8 @@ auto Ui::draw(UiContext& context) -> void {
     if (actions.reset_layout) {
         reset_layout = true;
     }
+    shortcuts_open |= actions.show_shortcuts;
+    about_open |= actions.show_about;
 
     // The status bar takes space from the main window, so it comes before the dock space
     draw_status_bar(context);
@@ -142,6 +175,12 @@ auto Ui::draw(UiContext& context) -> void {
         }
     }
 
+    if (context.requests.show_memory) {
+        memory_panel->show(*context.requests.show_memory);
+    }
+
+    draw_shortcuts_window(context);
+    draw_about_window();
     draw_unsaved_prompt(context);
 }
 
@@ -167,6 +206,107 @@ auto Ui::sync_open_panels(Settings& settings) -> void {
     if (now_closed != closed) {
         closed = std::move(now_closed);
     }
+}
+
+
+
+auto Ui::draw_shortcuts_window(const UiContext& context) -> void {
+    if (!shortcuts_open) {
+        return;
+    }
+
+    ImGui::SetNextWindowSize({ImGui::GetFontSize() * 26.0f, ImGui::GetFontSize() * 36.0f}, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Keyboard Shortcuts", &shortcuts_open, ImGuiWindowFlags_NoDocking)) {
+        ImGui::End();
+        return;
+    }
+
+    // The commands that have a shortcut, in the groups of the command table
+    auto category = std::string_view{};
+    bool table_open = false;
+    for (const auto& info : all_commands()) {
+        if (info.chord == ImGuiKey_None) {
+            continue;
+        }
+        if (info.category != category) {
+            if (table_open) {
+                ImGui::EndTable();
+            }
+            category = info.category;
+            const auto heading = std::string{category};
+            ImGui::SeparatorText(heading.c_str());
+            table_open = begin_keys_table(("##" + heading).c_str());
+        }
+        if (table_open) {
+            keys_row(info.name, shortcut_text(info.command));
+        }
+    }
+    if (table_open) {
+        ImGui::EndTable();
+    }
+
+    ImGui::SeparatorText("Held Keys");
+    if (begin_keys_table("##held")) {
+        keys_row("Turbo", ImGui::GetKeyName(turbo_key));
+        keys_row("Rewind", ImGui::GetKeyName(rewind_key));
+        ImGui::EndTable();
+    }
+
+    ImGui::SeparatorText("Code Editor");
+    if (begin_keys_table("##editor")) {
+        keys_row("Autocomplete", "Ctrl+Space");
+        keys_row("Go to Definition", "F12");
+        keys_row("Find and Replace", "Ctrl+F");
+        keys_row("Toggle Comment", "Ctrl+/");
+        keys_row("Undo", "Ctrl+Z");
+        keys_row("Redo", "Ctrl+Y");
+        ImGui::EndTable();
+    }
+
+    // The keymap of the platform gives the keyboard keys
+    ImGui::SeparatorText("CHIP-8 Keypad");
+    ImGui::TextDisabled("Each CHIP-8 key, and the keyboard key that presses it");
+    if (ImGui::BeginTable("##keypad", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame)) {
+        for (const auto key : keypad_layout) {
+            ImGui::TableNextColumn();
+            ImGui::Text("%X", static_cast<unsigned>(key));
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", context.key_names[key].c_str());
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::End();
+}
+
+
+auto Ui::draw_about_window() -> void {
+    if (!about_open) {
+        return;
+    }
+
+    const auto* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, {0.5f, 0.5f});
+    ImGui::SetNextWindowSize({ImGui::GetFontSize() * 28.0f, 0.0f}, ImGuiCond_Always);
+
+    constexpr auto flags = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse;
+    if (ImGui::Begin("About C8Emu", &about_open, flags)) {
+        ImGui::TextUnformatted("C8Emu");
+        ImGui::TextDisabled("A CHIP-8 emulator with an assembler and a debugger");
+        ImGui::Separator();
+
+        ImGui::Text("Platforms");
+		ImGui::BulletText("CHIP-8 (COSMAC VIP)");
+		ImGui::BulletText("Hires CHIP-8");
+		ImGui::BulletText("SUPER-CHIP");
+		ImGui::BulletText("XO-CHIP");
+        ImGui::Separator();
+
+        const int sdl = SDL_GetVersion();
+        ImGui::TextDisabled("Dear ImGui %s, SDL %d.%d.%d", IMGUI_VERSION,
+            SDL_VERSIONNUM_MAJOR(sdl), SDL_VERSIONNUM_MINOR(sdl), SDL_VERSIONNUM_MICRO(sdl));
+    }
+    ImGui::End();
 }
 
 } // namespace c8

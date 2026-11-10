@@ -54,6 +54,16 @@ auto read_file(const std::filesystem::path& file, size_t max_size, bool allow_em
     return data;
 }
 
+
+// The extension of a file in lowercase, for example ".ch8"
+auto lowercase_extension(const std::filesystem::path& file) -> std::string {
+    auto extension = path_to_utf8(file.extension());
+    std::ranges::transform(extension, extension.begin(), [](char c) {
+        return ((c >= 'A') && (c <= 'Z')) ? static_cast<char>(c - 'A' + 'a') : c;
+    });
+    return extension;
+}
+
 } // namespace
 
 
@@ -70,10 +80,7 @@ auto path_from_utf8(std::string_view text) -> std::filesystem::path {
 
 
 auto platform_from_extension(const std::filesystem::path& file) -> std::optional<Variant> {
-    auto extension = path_to_utf8(file.extension());
-    std::ranges::transform(extension, extension.begin(), [](char c) {
-        return ((c >= 'A') && (c <= 'Z')) ? static_cast<char>(c - 'A' + 'a') : c;
-    });
+    const auto extension = lowercase_extension(file);
 
     if (extension == ".c8h") {
         return Variant::chip8_hires;
@@ -85,6 +92,17 @@ auto platform_from_extension(const std::filesystem::path& file) -> std::optional
         return Variant::xochip;
     }
     return std::nullopt;
+}
+
+
+auto is_source_file(const std::filesystem::path& file) -> bool {
+    const auto extension = lowercase_extension(file);
+    return (extension == ".c8s") || (extension == ".asm") || (extension == ".s") || (extension == ".txt");
+}
+
+
+auto is_state_file(const std::filesystem::path& file) -> bool {
+    return lowercase_extension(file) == state_file_extension;
 }
 
 

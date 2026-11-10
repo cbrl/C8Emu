@@ -15,8 +15,7 @@ include(cmake/variables.cmake)
 
 # ---- Declare library ----
 
-# The emulator core. It has no third-party dependencies, so tests can link it
-# without the media layer.
+# The emulator core.
 add_library(
     c8emu_lib OBJECT
     source/assembler/assembler.cpp
@@ -86,12 +85,14 @@ add_executable(
     source/ui/panels/breakpoints_panel.cpp
     source/ui/panels/display_panel.cpp
     source/ui/panels/editor_panel.cpp
+    source/ui/panels/keypad_panel.cpp
     source/ui/panels/log_panel.cpp
     source/ui/panels/memory_panel.cpp
     source/ui/panels/profiler_panel.cpp
     source/ui/panels/program_panel.cpp
     source/ui/panels/registers_panel.cpp
     source/ui/panels/settings_panel.cpp
+    source/ui/panels/sprite_panel.cpp
     source/ui/panels/stack_panel.cpp
     source/ui/panels/syntax_reference_panel.cpp
     source/ui/panels/trace_panel.cpp

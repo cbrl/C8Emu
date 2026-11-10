@@ -259,22 +259,22 @@ auto EditorPanel::draw_menu_bar(UiContext& context) -> void {
     }
 
     if (ImGui::BeginMenu("File")) {
-        command_menu_item(context, "New", Command::new_source);
-        command_menu_item(context, "Open...", Command::open_source);
+        command_menu_item(context, Command::new_source, "New");
+        command_menu_item(context, Command::open_source, "Open...");
         disassemble_menu(context, "Disassemble Program");
         ImGui::Separator();
-        command_menu_item(context, "Save", Command::save_source);
-        command_menu_item(context, "Save As...", Command::save_source_as);
+        command_menu_item(context, Command::save_source, "Save");
+        command_menu_item(context, Command::save_source_as, "Save As...");
         ImGui::Separator();
-        command_menu_item(context, "Export ROM...", Command::export_rom);
+        command_menu_item(context, Command::export_rom);
         ImGui::EndMenu();
     }
 
     draw_edit_menu(context);
 
     if (ImGui::BeginMenu("Build")) {
-        command_menu_item(context, "Assemble & Load", Command::assemble_and_load);
-        command_menu_item(context, "Check", Command::check_source);
+        command_menu_item(context, Command::assemble_and_load);
+        command_menu_item(context, Command::check_source, "Check");
         ImGui::EndMenu();
     }
 
@@ -285,9 +285,9 @@ auto EditorPanel::draw_menu_bar(UiContext& context) -> void {
         const auto bytes = context.document.bytes_of_line(line);
         const auto target = bytes ? std::format("Line {}: 0x{:03X}", bytes->line + 1, bytes->address) : bytes.error();
 
-        command_menu_item(context, "Toggle Breakpoint at Cursor", Command::toggle_breakpoint);
+        command_menu_item(context, Command::toggle_breakpoint, "Toggle Breakpoint at Cursor");
         ImGui::SetItemTooltip("%s", target.c_str());
-        command_menu_item(context, "Run to Cursor", Command::run_to_cursor);
+        command_menu_item(context, Command::run_to_cursor);
         ImGui::SetItemTooltip("%s", target.c_str());
 
         ImGui::Separator();
@@ -393,7 +393,7 @@ auto EditorPanel::draw_banner(UiContext& context) -> void {
         "A new line gets an address at the next load.");
 
     ImGui::SameLine();
-    command_button(context, "Assemble & Load", Command::assemble_and_load);
+    command_button(context, Command::assemble_and_load);
 }
 
 
