@@ -2,6 +2,8 @@
 
 A CHIP-8 emulator with an assembler and a debugger
 
+![Screenshot](media/screenshot.png)
+
 ## Features
 
 - Platforms: CHIP-8 (COSMAC VIP), Hires CHIP-8, SUPER-CHIP, and XO-CHIP. Open
@@ -45,9 +47,5 @@ See [HACKING.md](HACKING.md) for a developer build.
 
 C8Emu keeps its files in the user data folder. On Windows, this folder is
 `%APPDATA%\cbrl\C8Emu`. The Log shows the folder when C8Emu starts.
-
-## Example
-
-![Screenshot](media/screenshot.png)
 
 [vcpkg]: https://github.com/microsoft/vcpkg
