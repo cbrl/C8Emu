@@ -464,6 +464,13 @@ auto Platform::end_frame() -> void {
 }
 
 
+auto Platform::set_title(const std::string& title) -> void {
+    if (!SDL_SetWindowTitle(sdl_window.get(), title.c_str())) {
+        log_debug("Cannot set the window title: {}", SDL_GetError());
+    }
+}
+
+
 auto Platform::limit_frame_rate(bool enabled, uint32_t frames_per_second) -> void {
     if (!enabled || (frames_per_second == 0)) {
         return;

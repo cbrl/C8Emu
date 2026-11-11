@@ -15,6 +15,9 @@ inline constexpr auto keypad_layout = std::array<uint8_t, 16>{
     0xA, 0x0, 0xB, 0xF,
 };
 
+/// A 4x4 table of the CHIP-8 keys, and the keyboard key that presses each one (UiContext::key_names)
+auto draw_keypad_map(const UiContext& context) -> void;
+
 
 /**
  * @class KeypadPanel

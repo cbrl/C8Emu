@@ -1,6 +1,8 @@
 #include "ui.h"
 
 #include "app/source_document.h"
+#include "chip8/chip8.h"
+#include "debugger/debugger.h"
 #include "frontend/settings.h"
 #include "ui/dock_layout.h"
 #include "ui/main_menu.h"
@@ -19,7 +21,6 @@
 #include "ui/panels/syntax_reference_panel.h"
 #include "ui/panels/trace_panel.h"
 #include "ui/panels/watch_panel.h"
-#include "ui/status_bar.h"
 
 #include <algorithm>
 #include <optional>
@@ -75,9 +76,12 @@ auto draw_unsaved_prompt(UiContext& context) -> void {
     const float width = ImGui::GetFontSize() * 6.0f;
     auto answer = std::optional<Command>{};
 
-    if (ImGui::Button("Save", {width, 0.0f})) {
+    // Enter saves, and Escape cancels
+    if (ImGui::Button("Save", {width, 0.0f}) || ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) {
         answer = Command::prompt_save;
     }
+    ImGui::SetItemDefaultFocus();
+    ImGui::SetItemTooltip("Enter");
     ImGui::SameLine();
     if (ImGui::Button("Discard", {width, 0.0f})) {
         answer = Command::prompt_discard;
@@ -86,6 +90,7 @@ auto draw_unsaved_prompt(UiContext& context) -> void {
     if (ImGui::Button("Cancel", {width, 0.0f}) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         answer = Command::prompt_cancel;
     }
+    ImGui::SetItemTooltip("Escape");
 
     if (answer) {
         context.requests.push(*answer);
@@ -118,32 +123,38 @@ auto keys_row(std::string_view name, std::string_view keys) -> void {
 } // namespace
 
 
+template<typename T>
+auto Ui::add_panel() -> T* {
+    auto panel = std::make_unique<T>();
+    auto* added = panel.get();
+    panels.push_back(std::move(panel));
+    return added;
+}
+
+
 Ui::Ui() {
     // The order of the View menu
-    panels.push_back(std::make_unique<SettingsPanel>());
-    panels.push_back(std::make_unique<DisplayPanel>());
-    panels.push_back(std::make_unique<KeypadPanel>());
-    panels.push_back(std::make_unique<RegistersPanel>());
-    panels.push_back(std::make_unique<StackPanel>());
-    panels.push_back(std::make_unique<WatchPanel>());
-    panels.push_back(std::make_unique<ProgramPanel>());
-    panels.push_back(std::make_unique<BreakpointsPanel>());
-    panels.push_back(std::make_unique<TracePanel>());
-    panels.push_back(std::make_unique<ProfilerPanel>());
-    panels.push_back(std::make_unique<EditorPanel>());
-    panels.push_back(std::make_unique<SyntaxReferencePanel>());
-
-    auto memory = std::make_unique<MemoryPanel>();
-    memory_panel = memory.get();
-    panels.push_back(std::move(memory));
-
-    panels.push_back(std::make_unique<SpritePanel>());
-    panels.push_back(std::make_unique<LogPanel>());
+    add_panel<SettingsPanel>();
+    add_panel<DisplayPanel>();
+    add_panel<KeypadPanel>();
+    add_panel<RegistersPanel>();
+    add_panel<StackPanel>();
+    add_panel<WatchPanel>();
+    program_panel = add_panel<ProgramPanel>();
+    add_panel<BreakpointsPanel>();
+    add_panel<TracePanel>();
+    add_panel<ProfilerPanel>();
+    editor_panel = add_panel<EditorPanel>();
+    add_panel<SyntaxReferencePanel>();
+    memory_panel = add_panel<MemoryPanel>();
+    sprite_panel = add_panel<SpritePanel>();
+    log_panel = add_panel<LogPanel>();
 }
 
 
 auto Ui::draw(UiContext& context) -> void {
     sync_open_panels(context.settings);
+    track_stops(context);
 
     const auto actions = draw_main_menu(context, panels);
     if (actions.reset_layout) {
@@ -153,7 +164,7 @@ auto Ui::draw(UiContext& context) -> void {
     about_open |= actions.show_about;
 
     // The status bar takes space from the main window, so it comes before the dock space
-    draw_status_bar(context);
+    status_bar.draw(context);
 
     const ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
 
@@ -175,8 +186,13 @@ auto Ui::draw(UiContext& context) -> void {
         }
     }
 
-    if (context.requests.show_memory) {
-        memory_panel->show(*context.requests.show_memory);
+    if (context.requests.show) {
+        show(context, *context.requests.show);
+    }
+
+    // An edit is not a stop. The next stop compares with the edited values.
+    if (context.requests.state_edited && stop_cycles) {
+        stop_state = context.chip.state();
     }
 
     draw_shortcuts_window(context);
@@ -208,6 +224,58 @@ auto Ui::sync_open_panels(Settings& settings) -> void {
     }
 }
 
+
+
+auto Ui::track_stops(UiContext& context) -> void {
+    if (context.debugger.is_running()) {
+        context.previous_stop = nullptr;
+        return;
+    }
+
+    const auto& state = context.chip.state();
+    if (state.total_cycles != stop_cycles) {
+        // A load or a reset sets the count to 0. The values of the old program are not changes.
+        const bool restart = !stop_cycles || (state.total_cycles == 0) || (state.memory.size() != stop_state.memory.size());
+
+        previous_stop = restart ? state : std::move(stop_state);
+        stop_state = state;
+        stop_cycles = state.total_cycles;
+    }
+
+    context.previous_stop = &previous_stop;
+}
+
+
+auto Ui::show(const UiContext& context, const ShowRequest& request) -> void {
+    switch (request.target) {
+        case ShowTarget::code_editor: {
+            // Data, an address outside the program, or a program from another text has no line
+            if (const auto line = context.document.lines().line_of(static_cast<uint16_t>(request.address))) {
+                editor_panel->show_line(*line);
+            }
+            else {
+                program_panel->show(request.address);
+            }
+            break;
+        }
+        case ShowTarget::program: {
+            program_panel->show(request.address);
+            break;
+        }
+        case ShowTarget::memory: {
+            memory_panel->show(request.address);
+            break;
+        }
+        case ShowTarget::sprites: {
+            sprite_panel->show(request.address);
+            break;
+        }
+        case ShowTarget::log: {
+            log_panel->bring_to_front();
+            break;
+        }
+    }
+}
 
 
 auto Ui::draw_shortcuts_window(const UiContext& context) -> void {
@@ -256,7 +324,9 @@ auto Ui::draw_shortcuts_window(const UiContext& context) -> void {
     if (begin_keys_table("##editor")) {
         keys_row("Autocomplete", "Ctrl+Space");
         keys_row("Go to Definition", "F12");
+        keys_row("Go to Line", "Ctrl+Shift+G");
         keys_row("Find and Replace", "Ctrl+F");
+        keys_row("Find Next", "Ctrl+G");
         keys_row("Toggle Comment", "Ctrl+/");
         keys_row("Undo", "Ctrl+Z");
         keys_row("Redo", "Ctrl+Y");
@@ -266,15 +336,7 @@ auto Ui::draw_shortcuts_window(const UiContext& context) -> void {
     // The keymap of the platform gives the keyboard keys
     ImGui::SeparatorText("CHIP-8 Keypad");
     ImGui::TextDisabled("Each CHIP-8 key, and the keyboard key that presses it");
-    if (ImGui::BeginTable("##keypad", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame)) {
-        for (const auto key : keypad_layout) {
-            ImGui::TableNextColumn();
-            ImGui::Text("%X", static_cast<unsigned>(key));
-            ImGui::SameLine();
-            ImGui::TextDisabled("%s", context.key_names[key].c_str());
-        }
-        ImGui::EndTable();
-    }
+    draw_keypad_map(context);
 
     ImGui::End();
 }

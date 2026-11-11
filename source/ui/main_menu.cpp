@@ -9,6 +9,7 @@
 #include "ui/machine_ui.h"
 #include "util/log.h"
 
+#include <array>
 #include <filesystem>
 #include <format>
 #include <string>
@@ -184,6 +185,39 @@ auto draw_view_menu(std::span<const std::unique_ptr<Panel>> panels, MainMenuActi
 }
 
 
+// The run buttons at the right end of the menu bar. They move to the left end of the free space if it is too small.
+auto draw_run_buttons(UiContext& context) -> void {
+    struct RunButton {
+        Command     command;
+        const char* label;
+    };
+    const auto buttons = std::array{
+        RunButton{Command::run_pause, context.debugger.is_running() ? "Pause" : "Run"},
+        RunButton{Command::step_into, "Step Into"},
+        RunButton{Command::step_over, "Step Over"},
+        RunButton{Command::step_out, "Step Out"},
+        RunButton{Command::frame_advance, "Frame"},
+        RunButton{Command::step_back, "Step Back"},
+        RunButton{Command::reset, "Reset"},
+    };
+
+    const auto& style = ImGui::GetStyle();
+    float width = 0.0f;
+    for (const auto& button : buttons) {
+        width += ImGui::CalcTextSize(button.label).x + (style.FramePadding.x * 2.0f) + style.ItemSpacing.x;
+    }
+
+    const float free = ImGui::GetContentRegionAvail().x;
+    if (free > width) {
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (free - width));
+    }
+
+    for (const auto& button : buttons) {
+        command_button(context, button.command, button.label);
+    }
+}
+
+
 auto draw_help_menu(MainMenuActions& actions) -> void {
     if (!ImGui::BeginMenu("Help")) {
         return;
@@ -214,6 +248,7 @@ auto draw_main_menu(UiContext& context, std::span<const std::unique_ptr<Panel>> 
     draw_options_menu(context);
     draw_view_menu(panels, actions);
     draw_help_menu(actions);
+    draw_run_buttons(context);
 
     ImGui::EndMainMenuBar();
     return actions;

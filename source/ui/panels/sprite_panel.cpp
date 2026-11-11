@@ -51,6 +51,7 @@ auto sprite_source(const MachineState& state, uint32_t sprite, int row_count, ui
 
 auto SpritePanel::draw(UiContext& context) -> void {
     dock_with_on_first_use("Memory");
+    apply_focus_request();
 
     if (!ImGui::Begin(title(), &open)) {
         ImGui::End();
@@ -58,6 +59,7 @@ auto SpritePanel::draw(UiContext& context) -> void {
     }
 
     const auto& state = context.chip.state();
+    address &= state.mask();
 
     ImGui::Checkbox("Follow I", &follow_i);
     ImGui::SetItemTooltip("Show the sprite at the I register");
@@ -102,7 +104,7 @@ auto SpritePanel::draw(UiContext& context) -> void {
 
     ImGui::SameLine();
     if (ImGui::Button("Show in Memory")) {
-        context.requests.show_memory = address;
+        context.requests.show_in(ShowTarget::memory, address);
     }
 
     ImGui::TextDisabled("%s", source.c_str());

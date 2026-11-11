@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "assembler/assembler.h"
@@ -17,7 +19,9 @@ namespace c8 {
  *
  * @details Each row is one instruction. The rows start at an even or an odd
  *          address, the same as the PC, so the PC row always decodes
- *          correctly. A click on the dot of a row toggles a breakpoint.
+ *          correctly. A click on the dot of a row toggles a breakpoint. A
+ *          click on a row shows its line in the Code Editor, and a right
+ *          click opens the address menu.
  *
  *          The labels of the program that loaded from the code editor show
  *          as rows before their addresses, and as names in the instructions.
@@ -30,6 +34,13 @@ public:
     }
 
     auto draw(UiContext& context) -> void override;
+
+    /// Bring the panel to the front, select the row of an address, and scroll to it
+    auto show(uint32_t address) -> void {
+        bring_to_front();
+        selected = address;
+        pending_scroll = address;
+    }
 
 private:
     // One row of the listing: an instruction, or a label before the instruction at its address
@@ -45,11 +56,21 @@ private:
     [[nodiscard]]
     auto instruction_row(uint16_t address) const -> int;
 
+    // The field that selects a row from a debugger expression
+    auto draw_go_to(UiContext& context) -> void;
+
     // Scroll to the PC row when the PC changes and the row is not visible
     bool follow_pc = true;
 
     // The PC in the last frame. A different PC scrolls the listing if follow_pc is on.
     uint32_t shown_pc = 0x10000;
+
+    // The address of the selected row, and an address to scroll to in the next frame
+    std::optional<uint32_t> selected;
+    std::optional<uint32_t> pending_scroll;
+
+    std::string go_to_text;
+    std::string go_to_error;
 
     std::vector<Label> labels;      // The labels of the rows, in order of address
     AddressNames       names;       // The first label of each address

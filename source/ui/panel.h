@@ -19,7 +19,23 @@ class Debugger;
 class Session;
 class SourceDocument;
 struct EmulationRate;
+struct MachineState;
 struct Settings;
+
+/// A panel that can show an address
+enum class ShowTarget : uint8_t {
+    code_editor, ///< The source line that wrote the address. The Program panel shows an address that no line wrote.
+    program,     ///< The instruction row of the address
+    memory,      ///< The byte of the address
+    sprites,     ///< The sprite at the address
+    log,         ///< The Log panel. The address is not used.
+};
+
+/// A request to bring a panel to the front and show an address in it
+struct ShowRequest {
+    ShowTarget target  = ShowTarget::code_editor;
+    uint32_t   address = 0;
+};
 
 /// Requests from the UI that the app handles after the frame
 struct UiRequests {
@@ -35,11 +51,16 @@ struct UiRequests {
     /// A panel that is closed or hidden holds no keys.
     uint16_t keypad_keys = 0;
 
-    /// Show this address in the Memory panel. The UI does this itself at the end of the frame.
-    std::optional<uint32_t> show_memory;
+    /// Show an address in a panel. The UI does this itself at the end of the frame.
+    std::optional<ShowRequest> show;
 
     auto push(Command command) -> void {
         commands.push_back(command);
+    }
+
+    /// Request to show an address in a panel. A later request in the same frame replaces it.
+    auto show_in(ShowTarget target, uint32_t address = 0) -> void {
+        show = ShowRequest{.target = target, .address = address};
     }
 
     /// Request a command that opens a file
@@ -62,9 +83,18 @@ struct UiContext {
     ImTextureID                        display_texture;
     bool                               turbo_active;   ///< The turbo key is held
     bool                               rewinding;      ///< The rewind key is held, and the history plays backward
+    bool                               text_input;     ///< A text field or the code editor has the keyboard, so the CHIP-8 keys do not reach the machine
     const std::optional<Command>&      unsaved_prompt; ///< A command that waits for an answer about unsaved source changes
     UiRequests&                        requests;
+
+    /// The machine at the stop before the last stop, so a panel can mark the values that changed since then.
+    /// nullptr while the program runs. The UI sets it at the start of the frame.
+    const MachineState*                previous_stop = nullptr;
 };
+
+
+/// The text color of a value that changed since the stop before (see UiContext::previous_stop)
+inline constexpr auto changed_value_color = ImVec4{1.0f, 0.55f, 0.25f, 1.0f};
 
 
 /**
@@ -90,8 +120,26 @@ public:
     /// Draw the window. The UI calls this only while the panel is open.
     virtual auto draw(UiContext& context) -> void = 0;
 
+    /// Open the panel, and bring it to the front in the next frame. In a dock node, it becomes the selected tab.
+    auto bring_to_front() noexcept -> void {
+        open = true;
+        focus_requested = true;
+    }
+
     /// False after the user closes the window. The View menu opens it again.
     bool open = true;
+
+protected:
+    /// Call just before ImGui::Begin. It does the request of bring_to_front().
+    auto apply_focus_request() -> void {
+        if (focus_requested) {
+            ImGui::SetNextWindowFocus();
+            focus_requested = false;
+        }
+    }
+
+private:
+    bool focus_requested = false;
 };
 
 } // namespace c8

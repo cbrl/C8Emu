@@ -2,7 +2,9 @@
 
 #include "frontend/settings.h"
 
+#include <format>
 #include <string>
+#include <string_view>
 
 namespace c8 {
 
@@ -66,8 +68,12 @@ auto command_button(UiContext& context, Command command, const char* label) -> v
         context.requests.push(command);
     }
 
+    // A button with its own label names the command in the tooltip
     const auto keys = shortcut_text(command);
     auto tooltip = std::string{info.description};
+    if ((label != nullptr) && (std::string_view{label} != info.name)) {
+        tooltip = tooltip.empty() ? std::string{info.name} : std::format("{}: {}", info.name, tooltip);
+    }
     if (!keys.empty()) {
         tooltip += tooltip.empty() ? keys : " (" + keys + ")";
     }

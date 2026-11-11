@@ -9,9 +9,12 @@ The Code Editor doubles as a debugger.
 - Click the column left of the text to add or remove a breakpoint. A line
   without bytes puts the breakpoint on the next line with bytes.
 - While the program is paused, an arrow and a highlight show the line of the PC.
-- Right-click a line number for Add Breakpoint, Run to Here, Set PC Here, and
-  Copy Address.
+- Right-click a line number for the address menu of the line (see below).
 - F9 toggles the breakpoint of the cursor line. Ctrl+F10 runs to the cursor line.
+- The line number of a line with a problem has the color of the problem. Hover
+  it to see the messages.
+- Go to Line (Ctrl+Shift+G, or a click on "Ln, Col" below the editor) moves the
+  cursor to a line number. Ctrl+G is Find Next.
 
 Breakpoints and the PC arrow follow their lines after edits to the source. A
 breakpoint is removed if its line is deleted or writes no bytes after an edit.
@@ -176,7 +179,8 @@ it. Turn on Record first. The trace keeps the newest 100,000 instructions.
   trace does not slow the app.
 - Follow scrolls to the newest row while the program runs.
 - Copy puts the rows that pass the filter on the clipboard.
-- Click an address to show its line in the Code Editor.
+- Click an address to show its line in the Code Editor. Right-click it for the
+  address menu.
 
 ## Profiler
 
@@ -186,4 +190,7 @@ writes of each byte. Turn on Profile first. A load or a reset clears the counts.
 - **Hot Spots**: the top addresses that run most often, with their share of
   all executions.
 - **Heat Map**: all memory as cells. Red shows executions, green shows writes,
-  and blue shows reads. Hover a cell to see its counts.
+  and blue shows reads. Hover a cell to see its counts. The cells of the program
+  are lighter, and a yellow frame marks the cell of the PC. Click a cell to show
+  its code in the Code Editor, or its memory if no code ran in it. Right-click a
+  cell for the address menu.

@@ -17,6 +17,11 @@ namespace c8 {
  * @details The panel filters by level and by text. It can copy the visible
  *          messages and clear the log. With auto-scroll on, it follows new
  *          messages while the view is at the bottom.
+ *
+ *          A right click on a message opens a menu that copies it. If the
+ *          message has an address (for example "0x0204"), the menu also has
+ *          the address menu, and a double click shows the address in the
+ *          Code Editor.
  */
 class LogPanel final : public Panel {
 public:
@@ -29,7 +34,13 @@ public:
 
 private:
     auto draw_toolbar() -> bool;
-    auto draw_messages() -> void;
+    auto draw_messages(UiContext& context) -> void;
+
+    // The menu of a right click on a message
+    auto draw_message_menu(UiContext& context) -> void;
+
+    // The message of the open menu
+    LogEntry menu_entry;
 
     // A copy of the log, updated when the log changes
     std::vector<LogEntry> entries;

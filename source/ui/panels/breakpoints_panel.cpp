@@ -1,10 +1,9 @@
 #include "breakpoints_panel.h"
 
-#include "app/source_document.h"
 #include "assembler/disassembler.h"
 #include "chip8/chip8.h"
-#include "debugger/address_names.h"
 #include "debugger/debugger.h"
+#include "ui/address_menu.h"
 
 #include <algorithm>
 #include <array>
@@ -47,32 +46,18 @@ auto show_error(const std::string& error) -> void {
     }
 }
 
-// The address and its name, for example "0x0204  loop+0x4"
-auto address_with_name(uint32_t address, const UiContext& context) -> std::string {
-    const auto name = address_name(address, context.document.program_labels());
-    return name.empty() ? std::format("0x{:04X}", address) : std::format("0x{:04X}  {}", address, name);
-}
-
 } // namespace
 
 
 auto BreakpointsPanel::parse_address(const UiContext& context, const std::string& text, std::string& error) -> std::optional<uint16_t> {
-    const auto& state = context.chip.state();
-
-    const auto expression = DebugExpression::compile(text, context.debugger.symbols());
-    if (!expression) {
-        error = expression.error();
-        return std::nullopt;
-    }
-
-    const auto value = expression->evaluate(state);
-    if ((value < 0) || (static_cast<uint64_t>(value) >= state.memory.size())) {
-        error = std::format("{} is not an address. Use 0 to 0x{:X}.", format_debug_value(value), state.memory.size() - 1);
+    const auto address = evaluate_address(context, text);
+    if (!address) {
+        error = address.error();
         return std::nullopt;
     }
 
     error.clear();
-    return static_cast<uint16_t>(value);
+    return *address;
 }
 
 
@@ -195,10 +180,11 @@ auto BreakpointsPanel::draw_breakpoints(UiContext& context) -> void {
         ImGui::SetItemTooltip("A breakpoint that is off stays in the list, but it does not stop or log");
 
         ImGui::TableNextColumn();
-        if (ImGui::Selectable(address_with_name(address, context).c_str())) {
-            context.document.reveal(address);
+        if (ImGui::Selectable(address_with_name(context, address).c_str())) {
+            context.requests.show_in(ShowTarget::code_editor, address);
         }
-        ImGui::SetItemTooltip("Show the line in the Code Editor");
+        ImGui::SetItemTooltip("Show the line in the Code Editor. Right click for address menu.");
+        address_context_menu(context, address, std::nullopt);
 
         ImGui::TableNextColumn();
         const auto text = format_instruction(state.read_word(address), state.read_word(address + 2u), context.chip.variant());
@@ -210,7 +196,7 @@ auto BreakpointsPanel::draw_breakpoints(UiContext& context) -> void {
         if (ImGui::IsItemDeactivatedAfterEdit()) {
             (void)debugger.set_breakpoint_condition(address, fields.condition);
         }
-        ImGui::SetItemTooltip("Stop only when this is true, for example: v0 == 5 && [i] != 0");
+        ImGui::SetItemTooltip("Stop only when this is true, e.g.: v0 == 5 && [i] != 0");
         show_error(breakpoint.condition.error);
 
         ImGui::TableNextColumn();
@@ -312,11 +298,15 @@ auto BreakpointsPanel::draw_watchpoints(UiContext& context) -> void {
         ImGui::Checkbox("##enabled", &live.enabled);
 
         ImGui::TableNextColumn();
-        auto range = address_with_name(watch.address, context);
+        auto range = address_with_name(context, watch.address);
         if (watch.length > 1) {
             range += std::format("  to 0x{:04X}", watch.address + watch.length - 1);
         }
-        ImGui::TextUnformatted(range.c_str());
+        if (ImGui::Selectable(range.c_str())) {
+            context.requests.show_in(ShowTarget::memory, watch.address);
+        }
+        ImGui::SetItemTooltip("Show the memory. Right click for address menu.");
+        address_context_menu(context, watch.address, std::nullopt);
 
         ImGui::TableNextColumn();
         ImGui::TextUnformatted(access_name(watch.access));

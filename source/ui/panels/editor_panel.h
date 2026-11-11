@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include <imgui-color-text-edit/TextEditor.h>
@@ -33,6 +34,8 @@ struct Label;
  *          closes while the user types, and it opens again after the mouse
  *          moves. The editor offers completions while the user types, and
  *          F12 or the right-click menu goes to the definition of a name.
+ *          Go to Line (Ctrl+Shift+G, or a click on the cursor position)
+ *          moves the cursor to a line number.
  */
 class EditorPanel final : public Panel {
 public:
@@ -43,12 +46,18 @@ public:
 
     auto draw(UiContext& context) -> void override;
 
+    /// Bring the panel to the front, put the cursor at the start of the code of a line, and focus the editor
+    auto show_line(uint32_t line) -> void {
+        bring_to_front();
+        pending_line = line;
+    }
+
 private:
     // Set the parts of the editor that need the context only one time
     auto configure(UiContext& context) -> void;
 
-    static auto draw_menu_bar(UiContext& context) -> void;
-    static auto draw_edit_menu(UiContext& context) -> void;
+    auto draw_menu_bar(UiContext& context) -> void;
+    auto draw_edit_menu(UiContext& context) -> void;
     static auto draw_view_menu(UiContext& context) -> void;
 
     // Give the view options of the settings (line numbers, whitespace, mini map) to the editor
@@ -58,7 +67,12 @@ private:
     static auto draw_banner(UiContext& context) -> void;
 
     static auto draw_problems(UiContext& context, float table_height) -> void;
-    static auto draw_status_line(UiContext& context) -> void;
+
+    // The cursor position, the address, and the file. Returns true after a click on the cursor position.
+    static auto draw_status_line(UiContext& context) -> bool;
+
+    // The popup of Go to Line. go_to_line_requested opens it.
+    auto draw_go_to_line(UiContext& context) -> void;
 
     // Give the editor the help callback after the mouse stays on one word. Take it away while the user types.
     auto update_help(UiContext& context) -> void;
@@ -79,6 +93,13 @@ private:
 
     TextEditor::AutoCompleteConfig completion;
     bool configured = false;
+
+    // The line of show_line(). The cursor goes to it when the window is visible.
+    std::optional<uint32_t> pending_line;
+
+    // Go to Line opens in the next frame, and the text of its field
+    bool go_to_line_requested = false;
+    std::string go_to_line_text;
 
     // The help shows only after a move of the mouse, and not while another popup is open
     bool help_enabled = false;

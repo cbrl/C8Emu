@@ -23,7 +23,8 @@ struct MachineState;
  * @brief A hex editor for the CHIP-8 memory
  *
  * @details Background colors mark the PC, the I register, the breakpoints,
- *          the program, and the font.
+ *          the watchpoints, the bytes that changed since the stop before, the
+ *          program, and the font.
  */
 class MemoryPanel final : public Panel {
 public:
@@ -43,6 +44,7 @@ private:
     // What the background colors show in this frame, and the edits of the frame
     struct EditorData {
         const MachineState* state         = nullptr;
+        const MachineState* previous      = nullptr; // The stop before. nullptr while the program runs.
         const Debugger*     debugger      = nullptr;
         uint32_t            program_begin = 0;
         uint32_t            program_end   = 0;
@@ -61,7 +63,6 @@ private:
     MemoryEditor editor;
     EditorData data;
     bool jumped = false;
-    bool focus = false; // Bring the panel to the front in the next frame
 };
 
 } // namespace c8

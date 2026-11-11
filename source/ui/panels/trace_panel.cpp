@@ -4,6 +4,7 @@
 #include "chip8/chip8.h"
 #include "debugger/address_names.h"
 #include "debugger/debugger.h"
+#include "ui/address_menu.h"
 #include "ui/dock_layout.h"
 
 #include <algorithm>
@@ -180,8 +181,9 @@ auto TracePanel::draw(UiContext& context) -> void {
 
                 ImGui::TableNextColumn();
                 if (ImGui::Selectable(std::format("0x{:04X}", entry.pc).c_str(), false, ImGuiSelectableFlags_SpanAllColumns)) {
-                    context.document.reveal(entry.pc);
+                    context.requests.show_in(ShowTarget::code_editor, entry.pc);
                 }
+                address_context_menu(context, entry.pc, std::nullopt);
 
                 ImGui::TableNextColumn();
                 ImGui::TextColored(label_color, "%s", address_name(entry.pc, labels).c_str());

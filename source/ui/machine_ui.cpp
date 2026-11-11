@@ -48,11 +48,7 @@ auto platform_tooltip(Variant variant) -> const char* {
 } // namespace
 
 
-auto platform_menu(UiContext& context, const char* label) -> void {
-    if (!ImGui::BeginMenu(label)) {
-        return;
-    }
-
+auto platform_items(UiContext& context) -> void {
     for (const auto variant : all_variants) {
         const auto name = std::string{to_string(variant)};
         if (ImGui::MenuItem(name.c_str(), nullptr, variant == context.chip.variant())) {
@@ -60,16 +56,18 @@ auto platform_menu(UiContext& context, const char* label) -> void {
         }
         ImGui::SetItemTooltip("%s", platform_tooltip(variant));
     }
-
-    ImGui::EndMenu();
 }
 
 
-auto preset_menu(UiContext& context, const char* label) -> void {
-    if (!ImGui::BeginMenu(label)) {
-        return;
+auto platform_menu(UiContext& context, const char* label) -> void {
+    if (ImGui::BeginMenu(label)) {
+        platform_items(context);
+        ImGui::EndMenu();
     }
+}
 
+
+auto preset_items(UiContext& context) -> void {
     const auto* current = find_preset(context.chip.variant(), context.chip.quirks());
 
     for (const auto& preset : presets) {
@@ -81,8 +79,14 @@ auto preset_menu(UiContext& context, const char* label) -> void {
             select_preset(context, preset);
         }
     }
+}
 
-    ImGui::EndMenu();
+
+auto preset_menu(UiContext& context, const char* label) -> void {
+    if (ImGui::BeginMenu(label)) {
+        preset_items(context);
+        ImGui::EndMenu();
+    }
 }
 
 

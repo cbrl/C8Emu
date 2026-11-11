@@ -3,10 +3,13 @@
 #include "app/source_document.h"
 #include "chip8/chip8.h"
 #include "debugger/debugger.h"
+#include "ui/address_menu.h"
 #include "ui/breakpoint_marker.h"
 
 #include <algorithm>
 #include <string>
+
+#include <imgui_stdlib.h>
 
 namespace c8 {
 
@@ -14,6 +17,16 @@ namespace {
 
 constexpr ImU32 pc_row_color = IM_COL32(255, 200, 0, 60);
 constexpr auto  label_color  = ImVec4{0.35f, 0.70f, 0.61f, 1.0f};
+constexpr auto  error_color  = ImVec4{1.0f, 0.4f, 0.4f, 1.0f};
+
+
+// The address of the row that holds an address. The rows start at an address of the parity.
+auto row_address(uint32_t address, uint32_t parity) -> uint16_t {
+    if ((address & 1u) == parity) {
+        return static_cast<uint16_t>(address);
+    }
+    return static_cast<uint16_t>((address > parity) ? (address - 1u) : parity);
+}
 
 
 // The breakpoint marker of a row. Returns true if the user clicked it.
@@ -83,7 +96,25 @@ auto ProgramPanel::instruction_row(uint16_t address) const -> int {
 }
 
 
+auto ProgramPanel::draw_go_to(UiContext& context) -> void {
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
+    if (ImGui::InputTextWithHint("##go_to", "Go to address", &go_to_text, ImGuiInputTextFlags_EnterReturnsTrue)) {
+        if (const auto address = evaluate_address(context, go_to_text)) {
+            show(*address);
+            go_to_text.clear();
+            go_to_error.clear();
+        }
+        else {
+            go_to_error = address.error();
+        }
+    }
+    ImGui::SetItemTooltip("Address, a label, or a debugger expression, e.g. loop+4. Press Enter.");
+}
+
+
 auto ProgramPanel::draw(UiContext& context) -> void {
+    apply_focus_request();
+
     if (!ImGui::Begin(title(), &open)) {
         ImGui::End();
         return;
@@ -96,16 +127,35 @@ auto ProgramPanel::draw(UiContext& context) -> void {
     ImGui::Checkbox("Follow PC", &follow_pc);
     ImGui::SetItemTooltip("Scroll to the PC when it moves out of view");
 
+    ImGui::SameLine();
+    draw_go_to(context);
+
+    if (!go_to_error.empty()) {
+        ImGui::TextColored(error_color, "%s", go_to_error.c_str());
+    }
+
     // The rows start at address 0 or 1, the same parity as the PC
     const uint16_t pc = state.pc;
-    update_rows(context.document, pc & 1u, state.memory.size());
+    const uint32_t parity = pc & 1u;
+    update_rows(context.document, parity, state.memory.size());
 
     const int row_count = static_cast<int>(rows.size());
     const int pc_row = instruction_row(pc);
 
     const bool pc_moved = (pc != shown_pc);
     shown_pc = pc;
-    bool scroll_to_pc = follow_pc && pc_moved;
+
+    // The row to bring into view: an address of show(), or the PC after it moved
+    auto scroll_row = std::optional<int>{};
+    if (pending_scroll) {
+        scroll_row = instruction_row(row_address(*pending_scroll, parity));
+        pending_scroll.reset();
+    }
+    else if (follow_pc && pc_moved) {
+        scroll_row = pc_row;
+    }
+
+    const auto selected_row = selected ? std::optional<uint16_t>{row_address(*selected, parity)} : std::nullopt;
 
     const uint32_t program_begin = context.chip.program_origin();
     const uint32_t program_end = context.chip.program_end();
@@ -121,8 +171,8 @@ auto ProgramPanel::draw(UiContext& context) -> void {
 
         auto clipper = ImGuiListClipper{};
         clipper.Begin(row_count);
-        if (scroll_to_pc && (pc_row < row_count)) {
-            clipper.IncludeItemByIndex(pc_row);
+        if (scroll_row && (*scroll_row < row_count)) {
+            clipper.IncludeItemByIndex(*scroll_row);
         }
 
         while (clipper.Step()) {
@@ -149,6 +199,17 @@ auto ProgramPanel::draw(UiContext& context) -> void {
                 }
 
                 ImGui::TableNextColumn();
+
+                // The row is one selectable under the other cells. The breakpoint dot after it gets the clicks on the dot.
+                const ImVec2 row_start = ImGui::GetCursorScreenPos();
+                constexpr auto row_flags = ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap;
+                if (ImGui::Selectable("##row", selected_row == address, row_flags, {0.0f, ImGui::GetTextLineHeight()})) {
+                    selected = address;
+                    context.requests.show_in(ShowTarget::code_editor, address);
+                }
+                address_context_menu(context, address, ShowTarget::program);
+
+                ImGui::SetCursorScreenPos(row_start);
                 if (breakpoint_dot(debugger.find_breakpoint(address))) {
                     (void)debugger.toggle_breakpoint(address);
                 }
@@ -176,12 +237,12 @@ auto ProgramPanel::draw(UiContext& context) -> void {
                     }
                 }
 
-                // Scroll only if the PC row is out of view, so the listing does not jump at each step
-                if (scroll_to_pc && (index == pc_row)) {
+                // Scroll only if the row is out of view, so the listing does not jump at each step
+                if (scroll_row && (index == *scroll_row)) {
                     if (!ImGui::IsItemVisible()) {
                         ImGui::SetScrollHereY(0.25f);
                     }
-                    scroll_to_pc = false;
+                    scroll_row.reset();
                 }
 
                 ImGui::PopID();

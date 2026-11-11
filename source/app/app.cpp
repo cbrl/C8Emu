@@ -16,6 +16,8 @@
 #include <system_error>
 #include <utility>
 
+#include <imgui.h>
+
 namespace c8 {
 
 namespace {
@@ -131,6 +133,13 @@ auto App::run() -> void {
 
         rate_meter.update(chip.state(), RateMeter::clock::now());
         display_texture.update(chip.state().display, settings.palette);
+        update_title();
+
+        // The platform dropped the CHIP-8 keys above while ImGui wanted the keyboard. The code editor and
+        // the text fields want it. A held button or slider (an active item) also wants it, but only while the
+        // mouse holds it, so that is not text input. Read the state before the next frame changes it.
+        const auto& io = ImGui::GetIO();
+        const bool text_input = io.WantTextInput || (io.WantCaptureKeyboard && !ImGui::IsAnyItemActive());
 
         platform.begin_frame();
 
@@ -152,6 +161,7 @@ auto App::run() -> void {
             .display_texture = static_cast<ImTextureID>(display_texture.id()),
             .turbo_active    = turbo,
             .rewinding       = rewinding,
+            .text_input      = text_input,
             .unsaved_prompt  = unsaved_prompt,
             .requests        = requests,
         };
@@ -702,6 +712,20 @@ auto App::log_stop_events() -> void {
         default:
             log_info("{}", message);
             break;
+    }
+}
+
+
+auto App::update_title() -> void {
+    const auto& name = session.program_name();
+    auto title = name.empty() ? std::string{"C8Emu"} : (name + " - C8Emu");
+    if (document.is_dirty()) {
+        title.insert(0, "* ");
+    }
+
+    if (title != window_title) {
+        window_title = std::move(title);
+        platform.set_title(window_title);
     }
 }
 

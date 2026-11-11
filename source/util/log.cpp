@@ -35,6 +35,10 @@ auto Log::write(LogLevel level, std::string message) -> void {
             .level    = level,
             .message  = std::move(message),
         });
+
+        if (level >= LogLevel::warning) {
+            problem = buffer.back();
+        }
     }
 
     change_count.fetch_add(1, std::memory_order_release);
@@ -45,6 +49,7 @@ auto Log::clear() -> void {
     {
         const auto lock = std::scoped_lock{mutex};
         buffer.clear();
+        problem.reset();
     }
 
     change_count.fetch_add(1, std::memory_order_release);
@@ -60,6 +65,12 @@ auto Log::entries() const -> std::vector<LogEntry> {
 auto Log::size() const -> size_t {
     const auto lock = std::scoped_lock{mutex};
     return buffer.size();
+}
+
+
+auto Log::newest_problem() const -> std::optional<LogEntry> {
+    const auto lock = std::scoped_lock{mutex};
+    return problem;
 }
 
 

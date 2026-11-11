@@ -5,6 +5,7 @@
 #include "chip8/chip8.h"
 #include "debugger/address_names.h"
 #include "debugger/debugger.h"
+#include "ui/address_menu.h"
 #include "ui/dock_layout.h"
 
 #include <algorithm>
@@ -26,6 +27,7 @@ constexpr size_t heat_map_columns = 64;
 constexpr size_t heat_map_cells   = 4096;
 
 constexpr auto label_color = ImVec4{0.35f, 0.70f, 0.61f, 1.0f};
+constexpr ImU32 pc_frame_color = IM_COL32(255, 200, 0, 255);
 
 
 // 0 for no activity, then a logarithmic scale up to 1 for the maximum
@@ -130,8 +132,9 @@ auto ProfilerPanel::draw_hot_spots(UiContext& context) -> void {
 
         ImGui::TableNextColumn();
         if (ImGui::Selectable(std::format("0x{:04X}", spot.address).c_str(), false, ImGuiSelectableFlags_SpanAllColumns)) {
-            context.document.reveal(static_cast<uint16_t>(spot.address));
+            context.requests.show_in(ShowTarget::code_editor, spot.address);
         }
+        address_context_menu(context, spot.address, std::nullopt);
 
         ImGui::TableNextColumn();
         ImGui::TextColored(label_color, "%s", address_name(spot.address, labels).c_str());
@@ -189,45 +192,86 @@ auto ProfilerPanel::draw_heat_map(UiContext& context) -> void {
     ImGui::SameLine();
     ImGui::TextColored({0.45f, 0.6f, 1.0f, 1.0f}, "Read");
     ImGui::SameLine();
-    ImGui::TextDisabled("(%zu bytes in each cell, 0x%zX bytes in each row)", block, block * heat_map_columns);
+    ImGui::SameLine();
+    ImGui::TextColored({1.0f, 0.8f, 0.0f, 1.0f}, "PC");
+    ImGui::SameLine();
+    ImGui::TextDisabled("(%zu bytes in each cell, 0x%zX bytes in each row. The program is lighter.)", block, block * heat_map_columns);
 
     const float available = ImGui::GetContentRegionAvail().x;
     const float cell_size = std::max(2.0f, std::floor(std::min(available / static_cast<float>(heat_map_columns), ImGui::GetFontSize())));
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     auto* draw_list = ImGui::GetWindowDrawList();
 
-    for (size_t cell = 0; cell < cells; ++cell) {
-        const float red   = intensity(block_sum(executions, cell), max_executions);
-        const float green = intensity(block_sum(writes, cell), max_writes);
-        const float blue  = intensity(block_sum(reads, cell), max_reads);
+    const auto cell_min = [&](size_t cell) {
+        return ImVec2{origin.x + (static_cast<float>(cell % heat_map_columns) * cell_size),
+                      origin.y + (static_cast<float>(cell / heat_map_columns) * cell_size)};
+    };
 
-        const float x = origin.x + (static_cast<float>(cell % heat_map_columns) * cell_size);
-        const float y = origin.y + (static_cast<float>(cell / heat_map_columns) * cell_size);
-        const auto color = ImGui::ColorConvertFloat4ToU32({std::max(red, 0.08f), std::max(green, 0.08f), std::max(blue, 0.10f), 1.0f});
-        draw_list->AddRectFilled({x, y}, {x + cell_size - 1.0f, y + cell_size - 1.0f}, color);
+    // The cells of the program are lighter, so the program shows also where nothing ran
+    const size_t program_first = context.chip.program_origin() / block;
+    const size_t program_last = (std::max<size_t>(context.chip.program_end(), 1) - 1) / block;
+
+    for (size_t cell = 0; cell < cells; ++cell) {
+        const float floor = ((cell >= program_first) && (cell <= program_last)) ? 0.18f : 0.08f;
+        const float red   = std::max(intensity(block_sum(executions, cell), max_executions), floor);
+        const float green = std::max(intensity(block_sum(writes, cell), max_writes), floor);
+        const float blue  = std::max(intensity(block_sum(reads, cell), max_reads), floor + 0.02f);
+
+        const ImVec2 min = cell_min(cell);
+        draw_list->AddRectFilled(min, {min.x + cell_size - 1.0f, min.y + cell_size - 1.0f}, ImGui::ColorConvertFloat4ToU32({red, green, blue, 1.0f}));
+    }
+
+    // A frame marks the cell of the PC
+    const size_t pc_cell = context.chip.state().pc / block;
+    if (pc_cell < cells) {
+        const ImVec2 min = cell_min(pc_cell);
+        draw_list->AddRect({min.x - 1.0f, min.y - 1.0f}, {min.x + cell_size, min.y + cell_size}, pc_frame_color, 0.0f, ImDrawFlags_None, 2.0f);
     }
 
     const ImVec2 size = {cell_size * static_cast<float>(heat_map_columns), cell_size * static_cast<float>(rows)};
     ImGui::InvisibleButton("##heat", size);
 
-    if (!ImGui::IsItemHovered()) {
+    // The cell under the mouse
+    const ImVec2 mouse = ImGui::GetMousePos();
+    const auto column = static_cast<size_t>(std::max(0.0f, (mouse.x - origin.x) / cell_size));
+    const auto row = static_cast<size_t>(std::max(0.0f, (mouse.y - origin.y) / cell_size));
+    const size_t cell = (row * heat_map_columns) + column;
+    const bool on_cell = ImGui::IsItemHovered() && (column < heat_map_columns) && (cell < cells);
+
+    // The first executed address of the cell, or the first address if nothing ran in it
+    const auto cell_address = [&]() -> uint32_t {
+        const size_t first = cell * block;
+        for (size_t offset = 0; offset < block; ++offset) {
+            if (executions[first + offset] > 0) {
+                return static_cast<uint32_t>(first + offset);
+            }
+        }
+        return static_cast<uint32_t>(first);
+    };
+
+    if (on_cell && ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+        // Code shows in the Code Editor. Data shows in the Memory panel.
+        const bool ran = block_sum(executions, cell) > 0;
+        context.requests.show_in(ran ? ShowTarget::code_editor : ShowTarget::memory, cell_address());
+    }
+    if (on_cell && ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        menu_address = cell_address();
+    }
+    address_context_menu(context, menu_address, std::nullopt);
+
+    if (!on_cell) {
         return;
     }
 
-    const ImVec2 mouse = ImGui::GetMousePos();
-    const auto column = static_cast<size_t>((mouse.x - origin.x) / cell_size);
-    const auto row = static_cast<size_t>((mouse.y - origin.y) / cell_size);
-    const size_t cell = (row * heat_map_columns) + column;
-
-    if ((column < heat_map_columns) && (cell < cells)) {
-        const size_t first = cell * block;
-        const auto name = address_name(static_cast<uint32_t>(first), context.document.program_labels());
-        ImGui::SetTooltip("0x%04zX to 0x%04zX%s%s\nExecuted: %llu\nWritten: %llu\nRead: %llu",
-            first, first + block - 1, name.empty() ? "" : "  ", name.c_str(),
-            static_cast<unsigned long long>(block_sum(executions, cell)),
-            static_cast<unsigned long long>(block_sum(writes, cell)),
-            static_cast<unsigned long long>(block_sum(reads, cell)));
-    }
+    const size_t first = cell * block;
+    const auto name = address_name(static_cast<uint32_t>(first), context.document.program_labels());
+    ImGui::SetTooltip("0x%04zX to 0x%04zX%s%s\nExecuted: %llu\nWritten: %llu\nRead: %llu\n\n%s",
+        first, first + block - 1, name.empty() ? "" : "  ", name.c_str(),
+        static_cast<unsigned long long>(block_sum(executions, cell)),
+        static_cast<unsigned long long>(block_sum(writes, cell)),
+        static_cast<unsigned long long>(block_sum(reads, cell)),
+        (block_sum(executions, cell) > 0) ? "Click to show code. Right click for address menu."
+                                          : "Click to show memory. Right click for address menu.");
 }
 
 } // namespace c8

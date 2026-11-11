@@ -15,6 +15,22 @@ constexpr auto digits = std::string_view{"0123456789ABCDEF"};
 } // namespace
 
 
+auto draw_keypad_map(const UiContext& context) -> void {
+    if (!ImGui::BeginTable("##keypad_map", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchSame)) {
+        return;
+    }
+
+    for (const auto key : keypad_layout) {
+        ImGui::TableNextColumn();
+        ImGui::Text("%X", static_cast<unsigned>(key));
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", context.key_names[key].c_str());
+    }
+
+    ImGui::EndTable();
+}
+
+
 auto KeypadPanel::draw(UiContext& context) -> void {
     dock_with_on_first_use("Chip8 Settings");
 

@@ -5,17 +5,22 @@
 #include "debugger/debugger.h"
 #include "frontend/rom_files.h"
 #include "frontend/settings.h"
+#include "ui/address_menu.h"
 #include "ui/breakpoint_marker.h"
 #include "ui/command_ui.h"
 #include "ui/editor_assist.h"
 #include "util/log.h"
 
 #include <algorithm>
+#include <charconv>
 #include <format>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <system_error>
 
-#include <imgui_internal.h> // ImGuiKey_Keyboard_BEGIN
+#include <imgui_internal.h> // ImGuiKey_Keyboard_BEGIN, GetKeyChordName
+#include <imgui_stdlib.h>
 
 namespace c8 {
 
@@ -29,6 +34,9 @@ constexpr size_t gutter_glyphs = 2;
 
 constexpr auto error_color   = ImVec4{1.0f, 0.45f, 0.45f, 1.0f};
 constexpr auto warning_color = ImVec4{0.95f, 0.75f, 0.25f, 1.0f};
+
+// The editor uses Ctrl+G for Find Next
+constexpr auto go_to_line_chord = ImGuiKeyChord{ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_G};
 
 constexpr ImU32 pc_arrow_color   = IM_COL32(255, 200, 0, 255);
 constexpr ImU32 pc_outline_color = IM_COL32(60, 45, 0, 255);
@@ -131,8 +139,6 @@ auto draw_line_gutter(UiContext& context, const TextEditor::Decorator& decorator
 
 // The menu of a right click on a line number
 auto draw_line_menu(UiContext& context, size_t line) -> void {
-    auto& debugger = context.debugger;
-
     const auto bytes = context.document.bytes_of_line(line);
     if (!bytes) {
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
@@ -144,25 +150,14 @@ auto draw_line_menu(UiContext& context, size_t line) -> void {
     ImGui::TextDisabled("Line %u: 0x%03X", static_cast<unsigned>(bytes->line + 1), static_cast<unsigned>(bytes->address));
     ImGui::Separator();
 
-    const bool has_breakpoint = debugger.has_breakpoint_in(bytes->address, bytes->size);
-    if (ImGui::MenuItem(has_breakpoint ? "Remove Breakpoint" : "Add Breakpoint")) {
-        (void)debugger.toggle_breakpoint_in(bytes->address, bytes->size);
-    }
+    draw_address_menu_items(context, bytes->address, ShowTarget::code_editor, bytes->size);
+}
 
-    if (ImGui::MenuItem("Run to Here", nullptr, false, debugger.has_program())) {
-        debugger.run_to(bytes->address);
-    }
-    ImGui::SetItemTooltip("Run until the PC reaches this line");
 
-    if (ImGui::MenuItem("Set PC Here", nullptr, false, debugger.has_program() && !debugger.is_running())) {
-        context.chip.state().pc = bytes->address;
-    }
-    ImGui::SetItemTooltip("The next step or run starts at this line. Pause the program first.");
-
-    if (ImGui::MenuItem("Copy Address")) {
-        const auto text = std::format("0x{:03X}", bytes->address);
-        ImGui::SetClipboardText(text.c_str());
-    }
+// The column of the first glyph of a line that is not a space
+auto code_column(std::string_view text) -> uint32_t {
+    const auto column = text.find_first_not_of(" \t");
+    return (column == std::string_view::npos) ? 0 : static_cast<uint32_t>(column);
 }
 
 } // namespace
@@ -174,6 +169,7 @@ auto EditorPanel::draw(UiContext& context) -> void {
     if (!configured) {
         configure(context);
     }
+    apply_focus_request();
 
     // Before the editor draws, so the markers show in this frame
     const auto pc = paused_pc(context);
@@ -190,6 +186,13 @@ auto EditorPanel::draw(UiContext& context) -> void {
 
     draw_menu_bar(context);
     draw_banner(context);
+
+    // The cursor and the scroll take effect when the editor renders below
+    if (pending_line) {
+        const auto text = document.editor().GetLineText(*pending_line);
+        go_to(context, *pending_line, code_column(text));
+        pending_line.reset();
+    }
 
     // The editor calls these only inside Render(), so a reference to the context of this frame is safe
     auto& editor = document.editor();
@@ -221,9 +224,15 @@ auto EditorPanel::draw(UiContext& context) -> void {
     if (ImGui::Shortcut(ImGuiKey_F12)) {
         go_to_cursor_definition(context);
     }
+    if (ImGui::Shortcut(go_to_line_chord)) {
+        go_to_line_requested = true;
+    }
 
     draw_problems(context, table_height);
-    draw_status_line(context);
+    if (draw_status_line(context)) {
+        go_to_line_requested = true;
+    }
+    draw_go_to_line(context);
 
     ImGui::End();
 }
@@ -344,6 +353,11 @@ auto EditorPanel::draw_edit_menu(UiContext& context) -> void {
     }
     ImGui::SetItemTooltip("Go to the line that defines the label or the constant at the cursor");
 
+    const auto go_to_line_keys = std::string{ImGui::GetKeyChordName(go_to_line_chord)};
+    if (ImGui::MenuItem("Go to Line...", go_to_line_keys.c_str())) {
+        go_to_line_requested = true;
+    }
+
     ImGui::EndMenu();
 }
 
@@ -459,11 +473,17 @@ auto EditorPanel::draw_problems(UiContext& context, float table_height) -> void 
 }
 
 
-auto EditorPanel::draw_status_line(UiContext& context) -> void {
+auto EditorPanel::draw_status_line(UiContext& context) -> bool {
     auto& document = context.document;
     const auto cursor = document.editor().GetMainCursorPosition();
 
     ImGui::Text("Ln %zu, Col %zu", cursor.line + 1, cursor.index + 1);
+    bool go_to_line = false;
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        ImGui::SetItemTooltip("Go to Line (%s)", ImGui::GetKeyChordName(go_to_line_chord));
+        go_to_line = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+    }
 
     ImGui::SameLine();
     ImGui::TextDisabled("|");
@@ -497,6 +517,53 @@ auto EditorPanel::draw_status_line(UiContext& context) -> void {
         const auto full_path = path_to_utf8(document.path());
         ImGui::SetItemTooltip("%s%s", full_path.c_str(), document.is_dirty() ? "\nThe text has unsaved changes." : "");
     }
+
+    return go_to_line;
+}
+
+
+auto EditorPanel::draw_go_to_line(UiContext& context) -> void {
+    static constexpr auto popup = "Go to Line";
+    auto& editor = context.document.editor();
+
+    if (go_to_line_requested) {
+        go_to_line_requested = false;
+        go_to_line_text.clear();
+        ImGui::OpenPopup(popup);
+
+        // At the top of the panel, in the middle
+        const ImVec2 pos = ImGui::GetWindowPos();
+        ImGui::SetNextWindowPos({pos.x + (ImGui::GetWindowWidth() * 0.5f), pos.y + (ImGui::GetFrameHeight() * 2.0f)},
+            ImGuiCond_Always, {0.5f, 0.0f});
+    }
+
+    if (!ImGui::BeginPopup(popup)) {
+        return;
+    }
+
+    const size_t count = editor.GetLineCount();
+    ImGui::Text("Go to line (1 to %zu)", count);
+
+    if (ImGui::IsWindowAppearing()) {
+        ImGui::SetKeyboardFocusHere();
+    }
+    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
+    constexpr auto flags = ImGuiInputTextFlags_CharsDecimal | ImGuiInputTextFlags_EnterReturnsTrue;
+    if (ImGui::InputTextWithHint("##line", "Line number", &go_to_line_text, flags)) {
+        size_t number = 0;
+        const auto* begin = go_to_line_text.data();
+        const auto* end = begin + go_to_line_text.size();
+        if ((std::from_chars(begin, end, number).ec == std::errc{}) && (count > 0)) {
+            const auto line = static_cast<uint32_t>(std::clamp<size_t>(number, 1, count) - 1);
+            go_to(context, line, code_column(editor.GetLineText(line)));
+        }
+        ImGui::CloseCurrentPopup();
+    }
+    else if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        ImGui::CloseCurrentPopup();
+    }
+
+    ImGui::EndPopup();
 }
 
 

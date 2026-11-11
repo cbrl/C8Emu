@@ -7,6 +7,7 @@
 #include <deque>
 #include <format>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -65,6 +66,10 @@ public:
     [[nodiscard]]
     auto size() const -> size_t;
 
+    /// The newest warning or error since the last clear. std::nullopt if there is none.
+    [[nodiscard]]
+    auto newest_problem() const -> std::optional<LogEntry>;
+
     [[nodiscard]]
     auto capacity() const noexcept -> size_t {
         return max_entries;
@@ -79,6 +84,7 @@ public:
 private:
     mutable std::mutex mutex;
     std::deque<LogEntry> buffer;
+    std::optional<LogEntry> problem; // The newest warning or error
     size_t max_entries;
     uint64_t next_sequence = 1;
     std::atomic<uint64_t> change_count{0};

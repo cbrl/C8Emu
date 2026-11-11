@@ -25,6 +25,10 @@ constexpr ImU32 error_color        = IM_COL32(255, 70, 70, 255);
 constexpr ImU32 warning_color      = IM_COL32(230, 180, 40, 255);
 constexpr ImU32 error_line_color   = IM_COL32(255, 60, 60, 40);
 constexpr ImU32 warning_line_color = IM_COL32(230, 180, 40, 30);
+
+// The line number of a problem line. The mouse on it shows the messages of the line.
+constexpr ImU32 error_number_color   = IM_COL32(255, 60, 60, 110);
+constexpr ImU32 warning_number_color = IM_COL32(230, 180, 40, 100);
 constexpr ImU32 pc_line_color      = IM_COL32(255, 200, 0, 60);
 
 } // namespace
@@ -171,23 +175,32 @@ auto SourceDocument::update_view(std::optional<uint16_t> pc) -> void {
     marked_pc_line = pc_line;
     markers_valid = true;
 
-    // true if the line has an error, false if it has only warnings
-    auto problem_lines = std::map<uint32_t, bool>{};
+    // The problems of each line, one message on each line of the text
+    struct LineProblems {
+        bool        has_error = false;
+        std::string text;
+    };
+    auto problem_lines = std::map<uint32_t, LineProblems>{};
     for (const auto& diagnostic : checked.diagnostics) {
-        auto& has_error = problem_lines[diagnostic.line];
-        has_error = has_error || (diagnostic.severity == Severity::error);
+        const bool is_error = (diagnostic.severity == Severity::error);
+        auto& problems = problem_lines[diagnostic.line];
+        problems.has_error = problems.has_error || is_error;
+        if (!problems.text.empty()) {
+            problems.text += '\n';
+        }
+        problems.text += std::format("{}: {}", is_error ? "Error" : "Warning", diagnostic.message);
     }
 
-    // An editor line has one marker. The PC line shows the PC, also if the line has a problem.
+    // An editor line has one marker. The text of the PC line shows the PC, also if the line has a problem.
     text_editor.ClearMarkers();
 
-    for (const auto& [line, has_error] : problem_lines) {
-        if (line != pc_line) {
-            text_editor.AddMarker(line, 0, has_error ? error_line_color : warning_line_color, "", "");
-        }
+    for (const auto& [line, problems] : problem_lines) {
+        const auto number_color = problems.has_error ? error_number_color : warning_number_color;
+        const auto line_color = (line == pc_line) ? pc_line_color : (problems.has_error ? error_line_color : warning_line_color);
+        text_editor.AddMarker(line, number_color, line_color, problems.text, "");
     }
 
-    if (pc_line) {
+    if (pc_line && !problem_lines.contains(*pc_line)) {
         text_editor.AddMarker(*pc_line, 0, pc_line_color, "", "");
     }
 }

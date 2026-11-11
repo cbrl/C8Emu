@@ -5,6 +5,7 @@
 #include "frontend/settings.h"
 #include "ui/command_ui.h"
 #include "ui/machine_ui.h"
+#include "ui/panels/keypad_panel.h"
 
 #include <algorithm>
 #include <array>
@@ -214,7 +215,7 @@ auto SettingsPanel::draw(UiContext& context) -> void {
         draw_audio(context.settings);
 
         section("Keypad");
-        ImGui::TextDisabled("1 2 3 4 / Q W E R / A S D F / Z X C V");
+        draw_keypad_map(context);
     }
     ImGui::End();
 }

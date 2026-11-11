@@ -99,6 +99,9 @@ struct Settings {
     /// The titles of the panels that the user closed
     std::vector<std::string> closed_panels;
 
+    /// The expressions of the Watch panel, in the order of the panel
+    std::vector<std::string> watches;
+
     // Files. UTF-8 paths, newest first.
     std::vector<std::string> recent_roms;
     std::vector<std::string> recent_sources;

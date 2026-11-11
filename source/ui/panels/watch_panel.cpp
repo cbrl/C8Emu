@@ -2,23 +2,59 @@
 
 #include "chip8/chip8.h"
 #include "debugger/debugger.h"
+#include "frontend/settings.h"
 #include "ui/dock_layout.h"
 
 #include <format>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include <imgui_stdlib.h>
 
 namespace c8 {
 
 auto WatchPanel::draw(UiContext& context) -> void {
-    dock_with_on_first_use("Stack");
-
-    if (!ImGui::Begin(title(), &open)) {
-        ImGui::End();
-        return;
+    if (!restored) {
+        restore(context);
     }
 
+    dock_with_on_first_use("Stack");
+    if (ImGui::Begin(title(), &open)) {
+        draw_watches(context);
+    }
+    ImGui::End();
+
+    save(context);
+}
+
+
+auto WatchPanel::restore(const UiContext& context) -> void {
+    restored = true;
+
+    const auto& debugger = context.debugger;
+    for (const auto& text : context.settings.watches) {
+        auto watch = Watch{.edit = text, .symbols_version = debugger.symbols_version()};
+        (void)watch.expression.assign(text, debugger.symbols());
+        watches.push_back(std::move(watch));
+    }
+}
+
+
+auto WatchPanel::save(UiContext& context) const -> void {
+    auto texts = std::vector<std::string>{};
+    texts.reserve(watches.size());
+    for (const auto& watch : watches) {
+        texts.push_back(watch.expression.text);
+    }
+
+    if (texts != context.settings.watches) {
+        context.settings.watches = std::move(texts);
+    }
+}
+
+
+auto WatchPanel::draw_watches(UiContext& context) -> void {
     const auto& debugger = context.debugger;
     const auto& symbols = debugger.symbols();
     const auto version = debugger.symbols_version();
@@ -42,7 +78,6 @@ auto WatchPanel::draw(UiContext& context) -> void {
 
     if (watches.empty()) {
         ImGui::TextDisabled("Add an expression to see its value while the program runs.");
-        ImGui::End();
         return;
     }
 
@@ -80,9 +115,19 @@ auto WatchPanel::draw(UiContext& context) -> void {
             ImGui::TableNextColumn();
             if (watch.expression.value) {
                 const auto value = watch.expression.value->evaluate(state);
-                ImGui::TextUnformatted(format_debug_value(value).c_str());
+
+                // The value at the stop before
+                const auto* previous = context.previous_stop;
+                const auto before = (previous != nullptr) ? std::optional{watch.expression.value->evaluate(*previous)} : std::nullopt;
+                const bool changed = before && (*before != value);
+                const auto color = changed ? changed_value_color : ImGui::GetStyleColorVec4(ImGuiCol_Text);
+
+                ImGui::TextColored(color, "%s", format_debug_value(value).c_str());
+                if (changed) {
+                    ImGui::SetItemTooltip("The value at the stop before: %s", format_debug_value(*before).c_str());
+                }
                 ImGui::TableNextColumn();
-                ImGui::Text("%lld", static_cast<long long>(value));
+                ImGui::TextColored(color, "%lld", static_cast<long long>(value));
             }
             else if (watch.expression.is_set()) {
                 ImGui::TextColored({1.0f, 0.4f, 0.4f, 1.0f}, "error");
@@ -109,8 +154,6 @@ auto WatchPanel::draw(UiContext& context) -> void {
     if (removed) {
         watches.erase(watches.begin() + static_cast<std::ptrdiff_t>(*removed));
     }
-
-    ImGui::End();
 }
 
 } // namespace c8

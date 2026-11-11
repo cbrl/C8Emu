@@ -9,6 +9,8 @@ namespace {
 
 constexpr ImU32 pc_color         = IM_COL32(255, 200, 0, 120);
 constexpr ImU32 breakpoint_color = IM_COL32(255, 64, 64, 120);
+constexpr ImU32 changed_color    = IM_COL32(255, 140, 64, 90);
+constexpr ImU32 watch_color      = IM_COL32(190, 110, 255, 80);
 constexpr ImU32 i_color          = IM_COL32(64, 160, 255, 120);
 constexpr ImU32 program_color    = IM_COL32(255, 255, 255, 20);
 constexpr ImU32 font_color       = IM_COL32(120, 255, 120, 30);
@@ -39,11 +41,7 @@ MemoryPanel::MemoryPanel() {
 
 
 auto MemoryPanel::draw(UiContext& context) -> void {
-    // A focused window in a dock node also becomes the selected tab
-    if (focus) {
-        ImGui::SetNextWindowFocus();
-        focus = false;
-    }
+    apply_focus_request();
 
     if (!ImGui::Begin(title(), &open)) {
         ImGui::End();
@@ -69,12 +67,18 @@ auto MemoryPanel::draw(UiContext& context) -> void {
     ImGui::SameLine();
     legend_item(breakpoint_color, "Breakpoint");
     ImGui::SameLine();
+    legend_item(watch_color, "Watchpoint");
+    ImGui::SameLine();
+    legend_item(changed_color, "Changed");
+    ImGui::SetItemTooltip("The bytes that changed since the stop before");
+    ImGui::SameLine();
     legend_item(program_color, "Program");
     ImGui::SameLine();
     legend_item(font_color, "Font");
 
     data = EditorData{
         .state         = &state,
+        .previous      = context.previous_stop,
         .debugger      = &context.debugger,
         .program_begin = context.chip.program_origin(),
         .program_end   = context.chip.program_end(),
@@ -118,6 +122,18 @@ auto MemoryPanel::background_color(const ImU8* /*memory*/, size_t address, void*
         return breakpoint_color;
     }
 
+    // A change of platform in this frame changes the memory size, so check the size of the copy
+    const auto* previous_memory = (source.previous != nullptr) ? &source.previous->memory : nullptr;
+    if ((previous_memory != nullptr) && (address < previous_memory->size()) && ((*previous_memory)[address] != state.memory[address])) {
+        return changed_color;
+    }
+
+    for (const auto& watch : source.debugger->watchpoints()) {
+        if (watch.enabled && (address >= watch.address) && (address < (uint32_t{watch.address} + watch.length))) {
+            return watch_color;
+        }
+    }
+
     if (address == (state.i & state.mask())) {
         return i_color;
     }
@@ -142,8 +158,7 @@ auto MemoryPanel::write_byte(ImU8* memory, size_t address, ImU8 value, void* use
 
 
 auto MemoryPanel::show(size_t address) -> void {
-    open = true;
-    focus = true;
+    bring_to_front();
     go_to(address);
 }
 

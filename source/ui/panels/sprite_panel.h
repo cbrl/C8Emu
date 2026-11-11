@@ -27,6 +27,14 @@ public:
 
     auto draw(UiContext& context) -> void override;
 
+    /// Bring the panel to the front and show the sprite at an address. Follow I goes off.
+    auto show(uint32_t sprite_address) -> void {
+        bring_to_front();
+        follow_i = false;
+        address = sprite_address;
+        address_error.clear();
+    }
+
 private:
     // The address field. Enter sets the address from a debugger expression.
     auto draw_address_field(UiContext& context) -> void;

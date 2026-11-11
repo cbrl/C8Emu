@@ -82,6 +82,9 @@ public:
     /// Sleep until the next frame. If `enabled` is false, return at once.
     auto limit_frame_rate(bool enabled, uint32_t frames_per_second) -> void;
 
+    /// Set the text of the title bar of the window (UTF-8)
+    auto set_title(const std::string& title) -> void;
+
     [[nodiscard]]
     auto window() const noexcept -> SDL_Window* {
         return sdl_window.get();

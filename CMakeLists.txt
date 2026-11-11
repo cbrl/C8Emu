@@ -73,6 +73,7 @@ add_executable(
     source/platform/display_texture.cpp
     source/platform/file_dialogs.cpp
     source/platform/platform.cpp
+    source/ui/address_menu.cpp
     source/ui/breakpoint_marker.cpp
     source/ui/chip8_language.cpp
     source/ui/command_ui.cpp

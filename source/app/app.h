@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <string>
 
 namespace c8 {
 
@@ -137,6 +138,9 @@ private:
     // Write the messages of the logpoints to the log
     auto log_logpoint_messages() -> void;
 
+    // Show the program and the unsaved state of the source in the title bar of the window
+    auto update_title() -> void;
+
     // Do a command from a menu, a button, or a shortcut. A command that discards
     // unsaved source changes waits for an answer to a prompt first.
     auto execute(Command command) -> void;
@@ -200,6 +204,9 @@ private:
 
     // A command that waits until the user saves or discards the source changes
     std::optional<Command> unsaved_prompt;
+
+    // The text in the title bar of the window
+    std::string window_title;
 
     bool quit = false;
 };

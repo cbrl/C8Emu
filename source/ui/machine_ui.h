@@ -6,10 +6,16 @@
 
 namespace c8 {
 
-/// A submenu with one item for each platform. An item changes only the platform. The quirks stay.
+/// One menu item for each platform. An item changes only the platform. The quirks stay.
+auto platform_items(UiContext& context) -> void;
+
+/// A submenu with the items of platform_items()
 auto platform_menu(UiContext& context, const char* label) -> void;
 
-/// A submenu with one item for each preset. An item sets the platform, the quirks, and the speed.
+/// One menu item for each preset. An item sets the platform, the quirks, and the speed.
+auto preset_items(UiContext& context) -> void;
+
+/// A submenu with the items of preset_items()
 auto preset_menu(UiContext& context, const char* label) -> void;
 
 /// A combo box that changes the platform
